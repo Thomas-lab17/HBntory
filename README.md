@@ -1,4 +1,9 @@
-# HBntory — Plan technique
+# HBntory — Plan technique et objectifs
+
+HBntory est un MVP de gestion de stock par agence, complété par une interface
+publique capable de répondre à des questions sur les produits et leur
+disponibilité. Le projet sépare les responsabilités pour garder les données de
+stock, les données produit externes et l'assistant IA indépendants.
 
 ## Stack technique choisie
 
@@ -18,9 +23,50 @@
 | Serveur MCP | Python + SDK/framework MCP |
 | Service IA | Python + FastAPI |
 | Tests | Pytest |
-| Variables sensibles | Fichier  non versionné |
+| Variables sensibles | Fichier `.env` non versionné |
 
 ## Architecture retenue
+
+```text
+client-web (nginx, :8080) ──> ai-service (:8001)
+                                  ├──> backoffice (:8000) ──> PostgreSQL
+                                  └──> product-mcp (:8002) ──> API Product externe
+```
+
+## Objectif de chaque partie
+
+| Partie | Objectif | Responsabilités prévues |
+|---|---|---|
+| `backoffice/` | Sécuriser l'administration et la gestion de stock. | API FastAPI, interface Backoffice HTML/CSS/JS, authentification JWT, rôles, utilisateurs, agences et règles de stock. |
+| `ai_service/` | Répondre aux questions publiques avec des données fiables. | API de questions, lecture du stock, appels aux outils produit MCP et intégration du fournisseur LLM. |
+| `product_mcp_server/` | Isoler l'accès aux données produit externes. | Outils MCP `list_products` et `get_product_details`, gestion des erreurs de réseau et d'indisponibilité. |
+| `client_web/` | Donner au visiteur une interface simple. | Champ de question, appel au service IA, affichage du chargement, de la réponse et des erreurs. |
+| `docs/` | Centraliser les consignes de développement et d'exploitation. | Guide Docker, commandes de lancement, diagnostic et documentation fonctionnelle. |
+| `docker-compose.yml` | Lancer le MVP complet localement. | Réseau entre services, PostgreSQL, volumes persistants, variables d'environnement et ports locaux. |
+
+## Démarrer l'environnement de développement
+
+Prérequis : Docker et Docker Compose.
+
+```bash
+cp .env.example .env
+# Choisir un mot de passe PostgreSQL dans .env
+docker compose up --build
+```
+
+Services disponibles une fois les conteneurs démarrés :
+
+- Client public : `http://localhost:8080`
+- API Backoffice : `http://localhost:8000/docs`
+- Service IA : `http://localhost:8001/docs`
+- Service Product MCP : `http://localhost:8002/docs`
+
+Pour arrêter l'environnement, utiliser `docker compose down`. Les données de
+PostgreSQL sont conservées dans le volume Docker `postgres_data`; utiliser
+`docker compose down -v` seulement si elles doivent être supprimées.
+
+Le guide complet des fichiers Docker, des commandes, des logs et de Docker
+Desktop est disponible dans [docs/README.md](docs/docker_implementation.md).
 
 
 
@@ -59,7 +105,8 @@ Le JWT contient au minimum :
 - son agence, si c’est un utilisateur commun ;
 - une date d’expiration.
 
-Le JWT doit être placé dans un cookie ,  en production et . Cela évite que JavaScript puisse lire directement le token.
+Le JWT doit être placé dans un cookie `HttpOnly`, `Secure` en production et
+`SameSite` configuré. Cela évite que JavaScript puisse lire directement le token.
 
 Avantage : le frontend et le backend communiquent facilement avec une API REST.
 
@@ -78,135 +125,110 @@ Limite : l’interface sera moins riche qu’une application React, mais cela es
 
 ---
 
-# Plan de réalisation
+# Roadmap MVP — alignée avec Trello
 
-## Étape 1 — Préparer le projet
+La source de vérité du planning est le tableau
+[HBntory — Plan MVP](https://trello.com/b/pgnSWet2/hbntory-plan-mvp). Les
+cartes prioritaires P0 sont regroupées en six jalons : un jalon est terminé
+uniquement lorsque sa preuve ou ses tests sont disponibles.
 
-Technologies : Git, Python, FastAPI, PostgreSQL, .
+| Jalon | Objectif | Cartes Trello P0 |
+|---|---|---|
+| 1 — Cadrage | Valider le périmètre avant le développement fonctionnel. | 00 Agenda et pilotage ; 01 Architecture et diagramme ; 02 Décisions REST/MCP et MVP. |
+| 2 — Fondations | Rendre les données et règles de stock opérationnelles. | 03 Schéma PostgreSQL et modèles SQLAlchemy ; 04 Migrations et données initiales. |
+| 3 — Backoffice | Sécuriser les usages internes et permettre la gestion de stock. | 05 JWT et mots de passe ; 06 Autorisations ; 07 Product API ; 08 Opérations de stock ; 09 Gestion des utilisateurs ; 10 Interface Backoffice. |
+| 4 — IA | Fonder les réponses sur les produits et stocks réels. | 11 Product MCP Server ; 12 API de stock en lecture seule ; 13 AI Query Service ; 14 Endpoint REST IA. |
+| 5 — Client | Donner accès aux questions IA depuis une page publique. | 15 Interface Client public. |
+| 6 — Livraison | Vérifier le flux de bout en bout et préparer la démonstration. | 16 Tests Backoffice ; 17 Tests MCP et IA ; 18 Intégration et démonstration ; 19 README et présentation ; 20 Vérification des consignes. |
 
-- Créer les projets Python.
-- Configurer PostgreSQL.
-- Ajouter les variables d’environnement.
-- Définir les services et le diagramme.
-- Définir les endpoints REST.
-- Définir les rôles  et .
+## Détail des étapes du MVP
 
-Résultat attendu : architecture validée avant de coder les fonctionnalités.
+### Jalon 1 — Cadrage
 
-## Étape 2 — Base de données et Backoffice API
+- Décrire les responsabilités du Backoffice, de PostgreSQL, du MCP, du service
+  IA et du client, ainsi que les flux entre eux.
+- Utiliser REST pour les interfaces et MCP pour les données produit.
+- Documenter le MVP, les éléments reportés et les options.
 
-Technologies : PostgreSQL, SQLAlchemy, Alembic, Pydantic.
+Critère de sortie : l'architecture, le diagramme et les décisions techniques
+sont validés.
 
-- Créer les tables fdbrv__,  et .
-- Créer les relations SQLAlchemy.
-- Ajouter les migrations Alembic.
-- Créer un script de données initiales :
-  - un administrateur ;
-  - deux agences ;
-  - du stock de test.
-- Stocker uniquement  dans la table de stock.
-- Mettre les règles de validation de stock dans le backend.
+### Jalon 2 — Fondations
 
-Résultat attendu : la base est initialisable et les règles de stock sont protégées côté serveur.
+- Créer les modèles `Branch`, `User` et `Stock`, leurs relations et la
+  contrainte agence/produit.
+- Ne stocker localement que `external_product_id`, jamais les détails produit.
+- Ajouter timestamps et suppression logique des utilisateurs.
+- Configurer Alembic et les données initiales : un administrateur haché, deux
+  agences et un stock de démonstration.
 
-## Étape 3 — Sécurité et rôles
+Critère de sortie : la base se crée depuis les migrations et protège les règles
+de stock.
 
-Technologies : JWT, Argon2 ou bcrypt, FastAPI Security.
+### Jalon 3 — Backoffice
 
-- Créer la connexion.
-- Hacher les mots de passe.
-- Générer un JWT après connexion.
-- Protéger les endpoints Backoffice.
-- Refuser les utilisateurs supprimés.
-- Autoriser :
-  - l’admin à gérer les utilisateurs ;
-  - l’utilisateur commun à gérer uniquement le stock de son agence.
-- Interdire :
-  - à l’admin de modifier le stock ;
-  - à l’utilisateur commun de gérer les utilisateurs ou une autre agence.
+- Authentifier avec des mots de passe Argon2 ou bcrypt, un login/logout et un
+  JWT expirant dans un cookie HttpOnly.
+- Refuser les utilisateurs supprimés et appliquer les rôles côté backend :
+  l'admin gère exclusivement les utilisateurs ; le rôle `common` gère
+  exclusivement le stock de sa propre agence.
+- Ajouter l'API Product au Backoffice pour vérifier les identifiants et gérer
+  produit inconnu ou erreur API.
+- Permettre de lister, ajouter et retirer du stock sans quantité négative.
+- Permettre à l'admin de créer, lister, modifier et supprimer logiquement les
+  utilisateurs communs.
+- Créer les pages de connexion, de stock et d'administration avec Fetch API.
 
-Résultat attendu : les autorisations sont vérifiées dans le backend.
+Critère de sortie : les droits sont appliqués par l'API et les parcours
+Backoffice sont utilisables.
 
-## Étape 4 — Fonctionnalités Backoffice
+### Jalon 4 — IA
 
-Technologies : FastAPI, HTML, CSS, JavaScript, Fetch API.
+- Exposer les outils MCP `list_products` et
+  `get_product_details(product_id)` avec des erreurs explicites.
+- Fournir une API interne de lecture seule pour le stock d'un produit, le stock
+  dans une agence, les produits d'une agence et une liste de courses.
+- Connecter l'agent IA à ces deux sources, journaliser les appels d'outils et
+  valider la requête REST de question.
+- Prendre en charge : détail produit, agences disponibles, produits d'une
+  agence et vérification d'une liste de courses ; refuser clairement ce qui est
+  hors périmètre ou indisponible.
 
-- Créer les endpoints de stock :
-  - lister le stock ;
-  - ajouter du stock ;
-  - retirer du stock ;
-  - consulter la quantité d’un produit.
-- Créer les endpoints administrateur :
-  - lister les utilisateurs ;
-  - créer un utilisateur ;
-  - changer son agence ;
-  - changer son mot de passe ;
-  - supprimer logiquement un utilisateur.
-- Connecter le Backoffice à l’API Product pour vérifier les identifiants et afficher les détails produit.
-- Créer les pages HTML/JS du Backoffice.
+Critère de sortie : toute réponse IA repose sur Product MCP et les stocks réels.
 
-Résultat attendu : un utilisateur commun gère son agence et l’admin gère les comptes.
+### Jalon 5 — Client public
 
-## Étape 5 — Product MCP Server
+- Proposer un champ de question et un bouton d'envoi sans authentification.
+- Montrer le chargement, la réponse IA ou une erreur compréhensible.
+- Fournir des exemples de questions correspondant aux quatre cas du MVP.
 
-Technologies : Python, MCP, client HTTP.
+Critère de sortie : un visiteur peut interroger le système depuis le navigateur.
 
-- Créer le serveur MCP.
-- Ajouter l’outil .
-- Ajouter l’outil .
-- Appeler l’API Product externe.
-- Gérer clairement :
-  - produit inconnu ;
-  - erreur réseau ;
-  - API Product indisponible.
-- Tester les outils manuellement.
+Exemples de questions à proposer dans le client :
 
-Résultat attendu : l’IA peut obtenir des données produit réelles via MCP.
+- « Quels sont les détails du produit `123` ? »
+- « Dans quelles agences le produit `123` est-il disponible ? »
+- « Quels produits sont disponibles dans l'agence Paris ? »
+- « Puis-je acheter 2 unités du produit `123` et 1 unité du produit `456` ? »
 
-## Étape 6 — AI Query Service
+### Jalon 6 — Livraison
 
-Technologies : Python, FastAPI, MCP client, client HTTP, fournisseur LLM.
+- Tester les opérations de stock, les rôles, la suppression logique et le refus
+  d'accès à une autre agence.
+- Tester produit connu/inconnu, erreur Product API, disponibilité, liste de
+  courses et informations manquantes.
+- Vérifier le flux complet : connexion, stock, administration, question client
+  et réponse IA fondée sur MCP et le stock réel.
+- Finaliser le README, les slides et la démonstration à trois.
 
-- Créer une API interne de stock en lecture seule.
-- Créer le service IA.
-- Connecter l’agent aux outils MCP Product.
-- Connecter le service IA à l’API de stock.
-- Accepter les questions sur :
-  - les détails d’un produit ;
-  - les agences où un produit est disponible ;
-  - les produits disponibles dans une agence ;
-  - une liste de courses et les quantités souhaitées.
-- Refuser clairement les questions hors périmètre.
-- Enregistrer les appels d’outils dans les logs pour faciliter le débogage.
+Critère de sortie : toutes les exigences P0 sont démontrables et testées.
 
-Résultat attendu : les réponses IA sont fondées sur les produits et stocks réellement récupérés.
+## Hors MVP
 
-## Étape 7 — Client public
-
-Technologies : HTML, CSS, JavaScript, Fetch API.
-
-- Créer une page avec un champ de question.
-- Ajouter un bouton d’envoi.
-- Appeler  du service IA.
-- Afficher un chargement pendant la réponse.
-- Afficher la réponse ou une erreur claire.
-
-Résultat attendu : un visiteur peut poser une question sans se connecter.
-
-## Étape 8 — Tests, documentation et démo
-
-Technologies : Pytest, documentation Markdown.
-
-- Tester le stock négatif.
-- Tester l’interdiction d’accès à une autre agence.
-- Tester les rôles admin/utilisateur commun.
-- Tester la suppression logique.
-- Tester les produits inconnus.
-- Tester les réponses IA et erreurs API.
-- Écrire le README.
-- Préparer la démo finale.
-
-Résultat attendu : le système complet peut être lancé et démontré.
+Les éléments P2 ne sont réalisés qu'après la validation complète des cartes
+P0 : historique de stock, export CSV, tests end-to-end et déploiement. Docker
+Compose est déjà fourni ici comme aide au développement local, sans étendre le
+périmètre fonctionnel du MVP.
 
 ---
 
