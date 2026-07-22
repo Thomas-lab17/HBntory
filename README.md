@@ -12,7 +12,6 @@ stock, les données produit externes et l'assistant IA indépendants.
 | Backend Backoffice | Python + FastAPI |
 | Base de données | PostgreSQL |
 | Modèles de données | SQLAlchemy |
-| Migrations de base de données | Alembic |
 | Validation des requêtes | Pydantic |
 | Authentification | JWT dans cookie sécurisé HttpOnly |
 | Hashage des mots de passe | Argon2 ou bcrypt |
@@ -33,6 +32,19 @@ client-web (nginx, :8080) ──> ai-service (:8001)
                                   └──> product-mcp (:8002) ──> API Product externe
 ```
 
+### Rôles et services
+
+Il ne faut pas confondre les rôles humains et les services techniques :
+
+- `admin` est un utilisateur Backoffice qui gère les comptes ;
+- `common` est un utilisateur Backoffice qui gère le stock de son agence ;
+- le client public ne se connecte pas et interroge uniquement le service IA ;
+- Product MCP est un service technique qui consulte l'API Product externe. Il
+  n'est pas un utilisateur et n'accède pas directement à PostgreSQL.
+
+Pour le MVP, seul le Backoffice accède à PostgreSQL. Le service IA lira les
+stocks à travers une API REST interne en lecture seule.
+
 ## Objectif de chaque partie
 
 | Partie | Objectif | Responsabilités prévues |
@@ -42,7 +54,7 @@ client-web (nginx, :8080) ──> ai-service (:8001)
 | `product_mcp_server/` | Isoler l'accès aux données produit externes. | Outils MCP `list_products` et `get_product_details`, gestion des erreurs de réseau et d'indisponibilité. |
 | `client_web/` | Donner au visiteur une interface simple. | Champ de question, appel au service IA, affichage du chargement, de la réponse et des erreurs. |
 | `docs/` | Centraliser les consignes de développement et d'exploitation. | Guide Docker, commandes de lancement, diagnostic et documentation fonctionnelle. |
-| `docker-compose.yml` | Lancer le MVP complet localement. | Réseau entre services, PostgreSQL, volumes persistants, variables d'environnement et ports locaux. |
+| `docker-compose.yml` | Lancer le MVP complet localement. | Réseau entre services, variables d'environnement et ports locaux. |
 
 ## Démarrer l'environnement de développement
 
@@ -66,7 +78,11 @@ PostgreSQL sont conservées dans le volume Docker `postgres_data`; utiliser
 `docker compose down -v` seulement si elles doivent être supprimées.
 
 Le guide complet des fichiers Docker, des commandes, des logs et de Docker
-Desktop est disponible dans [docs/README.md](docs/docker_implementation.md).
+Desktop est disponible dans
+[docs/docker_implementation.md](docs/docker_implementation.md).
+
+La synthèse des rôles, des flux et des choix techniques est disponible dans
+[docs/architecture_synthesis.md](docs/architecture_synthesis.md).
 
 
 
@@ -135,7 +151,7 @@ uniquement lorsque sa preuve ou ses tests sont disponibles.
 | Jalon | Objectif | Cartes Trello P0 |
 |---|---|---|
 | 1 — Cadrage | Valider le périmètre avant le développement fonctionnel. | 00 Agenda et pilotage ; 01 Architecture et diagramme ; 02 Décisions REST/MCP et MVP. |
-| 2 — Fondations | Rendre les données et règles de stock opérationnelles. | 03 Schéma PostgreSQL et modèles SQLAlchemy ; 04 Migrations et données initiales. |
+| 2 — Fondations | Rendre les données et règles de stock opérationnelles. | 03 Schéma PostgreSQL et modèles SQLAlchemy ; 04 Création des tables et données initiales. |
 | 3 — Backoffice | Sécuriser les usages internes et permettre la gestion de stock. | 05 JWT et mots de passe ; 06 Autorisations ; 07 Product API ; 08 Opérations de stock ; 09 Gestion des utilisateurs ; 10 Interface Backoffice. |
 | 4 — IA | Fonder les réponses sur les produits et stocks réels. | 11 Product MCP Server ; 12 API de stock en lecture seule ; 13 AI Query Service ; 14 Endpoint REST IA. |
 | 5 — Client | Donner accès aux questions IA depuis une page publique. | 15 Interface Client public. |
@@ -159,11 +175,10 @@ sont validés.
   contrainte agence/produit.
 - Ne stocker localement que `external_product_id`, jamais les détails produit.
 - Ajouter timestamps et suppression logique des utilisateurs.
-- Configurer Alembic et les données initiales : un administrateur haché, deux
-  agences et un stock de démonstration.
+- Créer automatiquement les tables et ajouter les données initiales : un
+  administrateur haché, deux agences et un stock de démonstration.
 
-Critère de sortie : la base se crée depuis les migrations et protège les règles
-de stock.
+Critère de sortie : la base se crée au démarrage et protège les règles de stock.
 
 ### Jalon 3 — Backoffice
 
@@ -236,7 +251,7 @@ périmètre fonctionnel du MVP.
 
 | Personne | Responsabilité |
 |---|---|
-| Personne 1 | Base PostgreSQL, SQLAlchemy, migrations, JWT, rôles, API Backoffice. |
+| Personne 1 | Base PostgreSQL, SQLAlchemy, JWT, rôles, API Backoffice. |
 | Personne 2 | Product API, MCP Server, API stock interne, AI Query Service. |
 | Personne 3 | Pages HTML/CSS/JS Backoffice et Client, tests interface, README, présentation. |
 
