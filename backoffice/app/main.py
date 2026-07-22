@@ -50,7 +50,7 @@ def seed_demo_data() -> None:
                 )
             )
 
-        if db.scalar(select(User).where(User.username == "common")) is None:
+        if db.scalar(select(User).where(User.username == "personne1")) is None:
             db.add(
                 User(
                     username="personne1",

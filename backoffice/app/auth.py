@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 import os
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Dict, Optional
 
 import jwt
 from argon2 import PasswordHasher
@@ -39,9 +39,8 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 def create_auth_router(
-    find_by_username: Callable[[str], Any],
-    find_by_id: Callable[[int], Any],
-    *,
+    find_by_username,
+    find_by_id,
     secret: Optional[str] = None,
     expire_minutes: int = 30,
     cookie_secure: Optional[bool] = None,

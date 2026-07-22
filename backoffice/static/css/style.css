@@ -1,0 +1,88 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #f3f4f6;
+  color: #1f2937;
+}
+
+.login-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.card {
+  width: min(100%, 380px);
+  padding: 32px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.1);
+}
+
+.subtitle {
+  color: #6b7280;
+  margin-bottom: 24px;
+}
+
+.form-group {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+input,
+.btn {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 6px;
+}
+
+input {
+  border: 1px solid #d1d5db;
+}
+
+.btn {
+  border: 0;
+  background: #2563eb;
+  color: white;
+  cursor: pointer;
+}
+
+.alert-error {
+  margin-bottom: 16px;
+  padding: 10px;
+  border-radius: 6px;
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.demo-help {
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.dashboard {
+  width: min(100% - 32px, 900px);
+  margin: 40px auto;
+}
+
+.dashboard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 32px;
+}
+
+.dashboard-card {
+  width: 100%;
+}
+
+.logout-button {
+  width: auto;
+}
