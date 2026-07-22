@@ -11,6 +11,7 @@ from sqlalchemy import select
 from app.auth import create_auth_router, hash_password
 from app.database import Base, SessionLocal, engine
 from app.models import Branch, Stock, User, UserRole
+from app.routers import products, stock, users
 
 
 def find_by_username(username: str) -> Optional[User]:
@@ -87,6 +88,10 @@ app.include_router(
         expire_minutes=int(os.getenv("JWT_EXPIRE_MINUTES", "30")),
     )
 )
+
+app.include_router(products.router)
+app.include_router(stock.router)
+app.include_router(users.router)
 
 
 @app.on_event("startup")

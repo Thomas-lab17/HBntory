@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Utilisateurs – HBntory</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header>
+    <span id="user-info"></span>
+    <button id="logout-btn">Déconnexion</button>
+  </header>
+
+  <main>
+    <h1>Gestion des utilisateurs</h1>
+
+    <div id="error-message" style="display: none; color: red;"></div>
+    <div id="success-message" style="display: none; color: green;"></div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Utilisateur</th>
+          <th>Agence</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="users-table-body">
+        <!-- populated by users.js -->
+      </tbody>
+    </table>
+
+    <section>
+      <h2>Créer un nouvel utilisateur commun</h2>
+      <form id="create-user-form">
+        <input type="text" id="new-username" placeholder="Nom d'utilisateur" required>
+        <input type="password" id="new-password" placeholder="Mot de passe" required>
+        <select id="new-branch-id" required>
+          <option value="">-- Sélectionner une agence --</option>
+          <option value="1">Paris</option>
+          <option value="2">Lyon</option>
+        </select>
+        <button type="submit">Créer</button>
+      </form>
+    </section>
+  </main>
+
+  <script src="js/users.js"></script>
+</body>
+</html>
