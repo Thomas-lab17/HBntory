@@ -1,14 +1,4 @@
-"""Authentification JWT réutilisable dans une application FastAPI existante.
-
-Intégration minimale :
-
-    from app.auth import create_auth_router
-    app.include_router(create_auth_router(find_by_username, find_by_id))
-
-Les fonctions ``find_by_username`` et ``find_by_id`` doivent retourner un
-objet utilisateur qui possède : id, username, password_hash, role et
-éventuellement branch_id et deleted (ou deleted_at).
-"""
+"""Gestion de l'authentification JWT."""
 
 from datetime import datetime, timedelta, timezone
 import os
@@ -36,11 +26,12 @@ class LoginResponse(BaseModel):
 
 
 def hash_password(password: str) -> str:
-    """Retourne le hash Argon2 à enregistrer en base."""
+    """Hash un mot de passe avec Argon2."""
     return _hasher.hash(password)
 
 
 def verify_password(password: str, password_hash: str) -> bool:
+    """Vérifie un mot de passe avec son hash."""
     try:
         return _hasher.verify(password_hash, password)
     except (InvalidHashError, VerificationError):
@@ -55,11 +46,7 @@ def create_auth_router(
     expire_minutes: int = 30,
     cookie_secure: Optional[bool] = None,
 ) -> APIRouter:
-    """Crée les routes JWT en utilisant le stockage de l'application.
-
-    ``find_by_username`` et ``find_by_id`` sont les seuls points à adapter à
-    PostgreSQL, SQLAlchemy ou toute autre base.
-    """
+    """Crée les routes d'authentification JWT."""
     jwt_secret = secret or os.getenv("JWT_SECRET_KEY", "development-secret")
     secure = (
         cookie_secure
@@ -69,12 +56,14 @@ def create_auth_router(
     router = APIRouter(prefix="/auth", tags=["authentication"])
 
     def error(detail: str = "Authentication required") -> HTTPException:
+        """Crée une erreur d'authentification."""
         return HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=detail,
         )
 
     def make_token(user: Any) -> str:
+        """Crée un token JWT pour un utilisateur."""
         now = datetime.now(timezone.utc)
         payload: Dict[str, Any] = {
             "sub": str(user.id),
@@ -87,6 +76,7 @@ def create_auth_router(
         return jwt.encode(payload, jwt_secret, algorithm="HS256")
 
     def read_token(token: str) -> Dict[str, Any]:
+        """Décode et valide un token JWT."""
         return jwt.decode(
             token,
             jwt_secret,
@@ -95,12 +85,14 @@ def create_auth_router(
         )
 
     def is_deleted(user: Any) -> bool:
+        """Indique si un utilisateur est supprimé."""
         return bool(
             getattr(user, "deleted", False)
             or getattr(user, "deleted_at", None) is not None
         )
 
     def public_user(user: Any) -> Dict[str, Any]:
+        """Retourne les informations publiques d'un utilisateur."""
         return {
             "id": user.id,
             "username": user.username,
@@ -111,6 +103,7 @@ def create_auth_router(
     def current_user(
         token: Optional[str] = Cookie(default=None, alias=COOKIE_NAME),
     ) -> Any:
+        """Récupère l'utilisateur associé au cookie JWT."""
         if token is None:
             raise error()
         try:
@@ -123,6 +116,7 @@ def create_auth_router(
 
     @router.post("/login", response_model=LoginResponse)
     def login(credentials: LoginRequest, response: Response) -> LoginResponse:
+        """Authentifie un utilisateur et crée son cookie JWT."""
         username = credentials.username.strip().casefold()
         user = find_by_username(username)
         if (
@@ -144,6 +138,7 @@ def create_auth_router(
 
     @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
     def logout(response: Response) -> None:
+        """Supprime le cookie JWT."""
         response.delete_cookie(
             key=COOKIE_NAME,
             httponly=True,
@@ -153,6 +148,7 @@ def create_auth_router(
 
     @router.get("/me")
     def me(user: Any = Depends(current_user)) -> Dict[str, Any]:
+        """Retourne l'utilisateur connecté."""
         return public_user(user)
 
     return router
