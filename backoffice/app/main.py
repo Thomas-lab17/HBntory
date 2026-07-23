@@ -11,6 +11,7 @@ from sqlalchemy import select
 from app.auth import create_auth_router, hash_password
 from app.database import Base, SessionLocal, engine
 from app.models import Branch, Stock, User, UserRole
+from app.routers import products, stock, users
 
 
 def find_by_username(username: str) -> Optional[User]:
@@ -88,6 +89,10 @@ app.include_router(
     )
 )
 
+app.include_router(products.router)
+app.include_router(stock.router)
+app.include_router(users.router)
+
 
 @app.on_event("startup")
 def create_tables() -> None:
@@ -101,5 +106,5 @@ def health() -> Dict[str, str]:
     return {"status": "ok", "service": "backoffice"}
 
 # modifier selon arborescence locale
-static_dir = Path(__file__).resolve().parent.parent / "static"
-app.mount("/", StaticFiles(directory=static_dir, html=True), name="backoffice")
+frontend_dir = Path(__file__).resolve().parent.parent / "frontend"
+app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="backoffice")

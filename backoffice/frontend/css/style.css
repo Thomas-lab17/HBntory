@@ -1,0 +1,374 @@
+/* ========================================
+   HBntory Backoffice - Modern Red & White Theme
+   ======================================== */
+
+:root {
+  --red: #e11d48;
+  --red-dark: #be123c;
+  --red-light: #fce7f3;
+  --white: #ffffff;
+  --bg: #fff1f2;
+  --text: #1e2937;
+  --text-light: #64748b;
+  --border: #e2e8f0;
+  --error: #dc2626;
+  --success: #16a34a;
+  --radius: 12px;
+  --shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --transition: 180ms ease;
+}
+
+/* Base */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background-color: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+}
+
+/* Typography */
+h1, h2 {
+  font-weight: 600;
+  margin: 0 0 1rem;
+}
+
+h1 { font-size: 1.75rem; }
+h2 { font-size: 1.25rem; color: var(--text-light); }
+
+/* Login Page */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.login-card {
+  background: var(--white);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 3rem 3.5rem;
+  width: 100%;
+  max-width: 420px;
+  animation: fadeInUp 400ms ease;
+}
+
+.login-card h1 {
+  text-align: center;
+  margin-bottom: 0.5rem;
+}
+
+.subtitle {
+  text-align: center;
+  color: var(--text-light);
+  margin-bottom: 2rem;
+}
+
+/* Forms */
+.form-group {
+  margin-bottom: 1.5rem;
+}
+
+.form-group label {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+  color: var(--text);
+}
+
+input[type="text"],
+input[type="password"],
+input[type="number"],
+select {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  font-size: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background-color: var(--white);
+  color: var(--text);
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+input:focus,
+select:focus {
+  outline: none;
+  border-color: var(--red);
+  box-shadow: 0 0 0 4px var(--red-light);
+}
+
+/* Polished dropdown arrow - ONLY for select elements */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 2.75rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%2364748b' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10l-5 5z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  background-size: 1rem;
+}
+
+select:hover {
+  border-color: #cbd5e1;
+}
+
+/* Buttons - Solid Red Style */
+.btn,
+form button,
+#logout-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 1.75rem;
+  font-size: 1rem;
+  font-weight: 500;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all var(--transition);
+  border: none;
+  background: var(--red);
+  color: var(--white);
+  text-decoration: none;
+}
+
+.btn:hover,
+form button:hover,
+#logout-btn:hover {
+  background: var(--red-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px -1px rgb(225 29 72 / 0.3);
+}
+
+.btn:active,
+form button:active,
+#logout-btn:active {
+  transform: scale(0.985);
+}
+
+.btn-primary {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+/* Delete button - danger style */
+.btn-delete {
+  background: #ef4444;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.btn-delete:hover {
+  background: #dc2626;
+  transform: translateY(-1px);
+}
+
+.btn-delete:active {
+  transform: scale(0.98);
+}
+
+/* Action buttons - same style as delete for consistency */
+.btn-change-pwd,
+.btn-change-branch {
+  background: #ef4444;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  margin-right: 0.4rem;
+  transition: all var(--transition);
+}
+
+.btn-change-pwd:hover,
+.btn-change-branch:hover {
+  background: #dc2626;
+  transform: translateY(-1px);
+}
+
+.btn-change-pwd:active,
+.btn-change-branch:active {
+  transform: scale(0.98);
+}
+
+/* Small inline action buttons */
+.btn-small {
+  background: #ef4444;
+  color: white;
+  border: none;
+  padding: 0.35rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  margin-left: 0.3rem;
+  transition: all var(--transition);
+  width: auto;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.btn-small:hover {
+  background: #dc2626;
+  transform: translateY(-1px);
+}
+
+.btn-small:active {
+  transform: scale(0.98);
+}
+
+/* Alerts */
+.alert {
+  padding: 1rem 1.25rem;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+  font-size: 0.95rem;
+  animation: fadeIn 200ms ease;
+}
+
+.alert-error {
+  background: #fef2f2;
+  color: var(--error);
+  border: 1px solid #fecaca;
+}
+
+/* Stock Page */
+header {
+  background: var(--red);
+  color: var(--white);
+  padding: 1.25rem 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 2px 4px rgb(0 0 0 / 0.1);
+}
+
+header #user-info {
+  font-weight: 500;
+}
+
+main {
+  max-width: 1100px;
+  margin: 2.5rem auto;
+  padding: 0 2rem;
+}
+
+/* White content card */
+main {
+  background: var(--white);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 2.5rem 3rem;
+}
+
+/* Table */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 2rem 0;
+  font-size: 0.95rem;
+}
+
+thead {
+  background: var(--red);
+  color: var(--white);
+}
+
+th, td {
+  padding: 1rem 1.25rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+tbody tr:hover {
+  background: var(--red-light);
+  transition: background var(--transition);
+}
+
+/* Forms on stock page */
+section {
+  margin-top: 2.5rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--border);
+}
+
+section:first-of-type {
+  border-top: none;
+  padding-top: 0;
+  margin-top: 0;
+}
+
+form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-end;
+}
+
+form input {
+  flex: 1;
+  min-width: 180px;
+}
+
+/* Messages */
+#error-message,
+#success-message {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  animation: fadeIn 200ms ease;
+}
+
+#error-message {
+  background: #fef2f2;
+  color: var(--error);
+}
+
+#success-message {
+  background: #f0fdf4;
+  color: var(--success);
+}
+
+/* Animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .login-card {
+    padding: 2rem 1.75rem;
+  }
+
+  main {
+    padding: 2rem 1.5rem;
+  }
+
+  form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

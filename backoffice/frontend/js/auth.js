@@ -21,7 +21,12 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
       if (response.ok) {
-        window.location.href = 'app.html';
+        const user = await response.json();
+        if (user.user && user.user.role === 'admin') {
+          window.location.href = 'users.html';
+        } else {
+          window.location.href = 'stock.html';
+        }
         return;
       }
 
