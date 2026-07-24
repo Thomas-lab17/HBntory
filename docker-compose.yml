@@ -1,4 +1,24 @@
 services:
+  external-products-api:
+    build: ./hbntory-products-api
+    environment:
+      HBN_PRODUCTS_PORT: "5000"
+      HBN_PRODUCTS_LATENCY_MS: "0"
+    ports:
+      - "${PRODUCT_API_PORT:-5001}:5000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=2)",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
   postgres:
     image: postgres:16-alpine
     environment:
@@ -23,8 +43,11 @@ services:
       JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-30}
       DEMO_ADMIN_PASSWORD: ${DEMO_ADMIN_PASSWORD:-Admin123!}
       DEMO_COMMON_PASSWORD: ${DEMO_COMMON_PASSWORD:-Test1234!}
+      PRODUCT_API_URL: ${PRODUCT_API_URL:-http://external-products-api:5000}
     depends_on:
       postgres:
+        condition: service_healthy
+      external-products-api:
         condition: service_healthy
     ports:
       - "${BACKOFFICE_PORT:-8000}:8000"
@@ -49,7 +72,10 @@ services:
     build: ./product_mcp_server
     environment:
       APP_ENV: ${APP_ENV:-development}
-      PRODUCT_API_URL: ${PRODUCT_API_URL:-}
+      PRODUCT_API_URL: ${PRODUCT_API_URL:-http://external-products-api:5000}
+    depends_on:
+      external-products-api:
+        condition: service_healthy
     ports:
       - "${PRODUCT_MCP_PORT:-8002}:8002"
     restart: unless-stopped
