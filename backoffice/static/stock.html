@@ -3,62 +3,146 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
   <title>Stock – HBntory</title>
   <link rel="stylesheet" href="/css/style.css">
-  <link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.css" rel="stylesheet">
 </head>
-<body>
-  <header>
-    <span id="user-info"></span>
-    <button id="logout-btn">Déconnexion</button>
-  </header>
+<body class="app-body">
+  <aside class="sidebar">
+    <a class="sidebar-brand" href="/stock.html" aria-label="HBntory">
+      <span class="brand-mark brand-mark-small" aria-hidden="true">◇</span>
+      <strong>HB<span>ntory</span></strong>
+    </a>
 
-  <main>
-    <h1 id="stock-title">Stock – Agence</h1>
+    <nav class="sidebar-nav" aria-label="Navigation principale">
+      <button class="nav-item is-active" type="button" data-view-target="stock-view">
+        <span aria-hidden="true">◇</span> Mon stock
+      </button>
+      <button class="nav-item" type="button" data-view-target="catalog-view">
+        <span aria-hidden="true">□</span> Catalogue
+      </button>
+    </nav>
 
-    <div id="error-message" style="display: none; color: red;"></div>
-    <div id="success-message" style="display: none; color: green;"></div>
-
-    <table>
-      <thead>
-        <tr>
-          <th>Produit (ID)</th>
-          <th>Quantité</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody id="stock-table-body">
-        <!-- populated by stock.js -->
-      </tbody>
-    </table>
-
-    <div id="product-loading" style="display: none; color: #e11d48; margin-bottom: 1rem;">
-      Chargement des produits...
+    <div class="sidebar-footer">
+      <button id="logout-btn" class="nav-item logout-button" type="button">
+        <span aria-hidden="true">↪</span> Déconnexion
+      </button>
+      <div class="user-card">
+        <span id="user-initials" class="avatar">—</span>
+        <div>
+          <strong id="user-name">Chargement…</strong>
+          <span id="user-branch"></span>
+        </div>
+      </div>
     </div>
-    <div id="product-error" style="display: none; color: #dc2626; margin-bottom: 1rem;">
-      pas de produit
-    </div>
+  </aside>
 
-    <section>
-      <h2>Ajouter du stock</h2>
-      <form id="add-form">
-        <select id="add-product-id" required></select>
-        <input type="number" id="add-quantity" placeholder="Quantité" required min="1">
-        <button type="submit">Ajouter</button>
-      </form>
-    </section>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="breadcrumb"><span>HBntory</span> › <strong id="breadcrumb-page">Stock</strong></div>
+      <div class="session-state"><i></i> Session active</div>
+    </header>
 
-    <section>
-      <h2>Retirer du stock</h2>
-      <form id="remove-form">
-        <select id="remove-product-id" required></select>
-        <input type="number" id="remove-quantity" placeholder="Quantité" required min="1">
-        <button type="submit">Retirer</button>
-      </form>
-    </section>
-  </main>
+    <main class="page-content">
+      <div id="error-message" class="alert alert-error" role="alert" hidden></div>
+      <div id="success-message" class="alert alert-success" role="status" hidden></div>
 
-  <script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
-  <script src="js/stock.js"></script>
+      <section id="stock-view" class="app-view is-active" aria-labelledby="stock-title">
+        <div class="page-heading">
+          <div>
+            <h1 id="stock-title">Stock</h1>
+            <p id="stock-subtitle">Stock rattaché à votre agence</p>
+          </div>
+          <button id="open-add-modal" class="btn btn-primary btn-auto" type="button">
+            + Ajouter du stock
+          </button>
+        </div>
+
+        <div class="toolbar">
+          <label class="search-field">
+            <span class="sr-only">Rechercher dans le stock</span>
+            <span aria-hidden="true">⌕</span>
+            <input id="stock-search" type="search" placeholder="Nom ou référence…">
+          </label>
+          <select id="stock-category-filter" aria-label="Filtrer par catégorie">
+            <option value="">Toutes les catégories</option>
+          </select>
+        </div>
+
+        <div class="panel table-panel">
+          <div class="table-scroll">
+            <table>
+              <thead id="stock-table-head">
+                <tr>
+                  <th>Produit / référence</th>
+                  <th>Catégorie</th>
+                  <th>Disponible</th>
+                  <th>Prix unitaire</th>
+                  <th class="align-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="stock-table-body">
+                <tr><td colspan="5" class="empty-state">Chargement du stock…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="catalog-view" class="app-view" aria-labelledby="catalog-title" hidden>
+        <div class="page-heading">
+          <div>
+            <h1 id="catalog-title">Catalogue produits</h1>
+            <p>Produits disponibles depuis l’API externe</p>
+          </div>
+          <button id="refresh-products" class="btn btn-secondary btn-auto" type="button">
+            Actualiser
+          </button>
+        </div>
+
+        <div class="toolbar">
+          <label class="search-field">
+            <span class="sr-only">Rechercher dans le catalogue</span>
+            <span aria-hidden="true">⌕</span>
+            <input id="catalog-search" type="search" placeholder="Nom, référence ou catégorie…">
+          </label>
+        </div>
+
+        <div id="product-loading" class="panel loading-state" hidden>Chargement des produits…</div>
+        <div id="product-error" class="alert alert-error" role="alert" hidden></div>
+        <div id="catalog-grid" class="catalog-grid" aria-live="polite"></div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="stock-dialog" class="modal">
+    <form id="stock-action-form" method="dialog" class="modal-card">
+      <div class="modal-heading">
+        <div>
+          <span id="modal-eyebrow" class="eyebrow">Mouvement de stock</span>
+          <h2 id="modal-title">Ajouter du stock</h2>
+        </div>
+        <button id="close-stock-modal" class="icon-button" type="button" aria-label="Fermer">×</button>
+      </div>
+
+      <input id="stock-action-mode" type="hidden" value="add">
+      <div class="form-group">
+        <label for="stock-product-id">Produit</label>
+        <select id="stock-product-id" required>
+          <option value="">Sélectionner un produit</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="stock-quantity">Quantité</label>
+        <input id="stock-quantity" type="number" min="1" step="1" required>
+      </div>
+      <div class="modal-actions">
+        <button id="cancel-stock-modal" class="btn btn-secondary btn-auto" type="button">Annuler</button>
+        <button id="submit-stock-action" class="btn btn-primary btn-auto" type="submit">Ajouter</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/js/stock.js?v=figma-front-1"></script>
 </body>
 </html>
