@@ -2,24 +2,29 @@
 
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.dependencies import get_current_common
 from app.models import Stock
+from app.product_api import (
+    ProductAPIError,
+    ProductAPIUnavailable,
+    ProductNotFound,
+    get_product,
+)
 
 router = APIRouter(prefix="/stock", tags=["stock"])
 
 
 class StockResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     external_product_id: str
     quantity: int
-
-    class Config:
-        from_attributes = True
 
 
 class StockAction(BaseModel):
@@ -60,17 +65,36 @@ def add_stock(
             detail="Quantity must be positive",
         )
 
+    try:
+        product = get_product(action.external_product_id)
+    except ProductNotFound as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Produit inconnu.",
+        ) from exc
+    except ProductAPIUnavailable as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="L'API Product est indisponible. Aucun stock n'a été modifié.",
+        ) from exc
+    except ProductAPIError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Réponse invalide de l'API Product. Aucun stock n'a été modifié.",
+        ) from exc
+
+    canonical_product_id = str(product["id"])
     stock = db.scalar(
         select(Stock).where(
             Stock.branch_id == user.branch_id,
-            Stock.external_product_id == action.external_product_id,
+            Stock.external_product_id == canonical_product_id,
         )
     )
 
     if stock is None:
         stock = Stock(
             branch_id=user.branch_id,
-            external_product_id=action.external_product_id,
+            external_product_id=canonical_product_id,
             quantity=0,
         )
         db.add(stock)
