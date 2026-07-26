@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stock – HBntory</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.css" rel="stylesheet">
+</head>
+<body>
+  <header>
+    <span id="user-info"></span>
+    <button id="logout-btn">Déconnexion</button>
+  </header>
+
+  <main>
+    <h1 id="stock-title">Stock – Agence</h1>
+
+    <div id="error-message" style="display: none; color: red;"></div>
+    <div id="success-message" style="display: none; color: green;"></div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Produit (ID)</th>
+          <th>Quantité</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="stock-table-body">
+        <!-- populated by stock.js -->
+      </tbody>
+    </table>
+
+    <div id="product-loading" style="display: none; color: #e11d48; margin-bottom: 1rem;">
+      Chargement des produits...
+    </div>
+    <div id="product-error" style="display: none; color: #dc2626; margin-bottom: 1rem;">
+      pas de produit
+    </div>
+
+    <section>
+      <h2>Ajouter du stock</h2>
+      <form id="add-form">
+        <select id="add-product-id" required></select>
+        <input type="number" id="add-quantity" placeholder="Quantité" required min="1">
+        <button type="submit">Ajouter</button>
+      </form>
+    </section>
+
+    <section>
+      <h2>Retirer du stock</h2>
+      <form id="remove-form">
+        <select id="remove-product-id" required></select>
+        <input type="number" id="remove-quantity" placeholder="Quantité" required min="1">
+        <button type="submit">Retirer</button>
+      </form>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
+  <script src="js/stock.js"></script>
+</body>
+</html>
