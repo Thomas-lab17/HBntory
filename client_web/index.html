@@ -1,14 +1,146 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="fr">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>HBntory</title>
-  </head>
-  <body>
-    <main>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HBntory – Questions produits & stock</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <div class="logo" aria-hidden="true">H</div>
       <h1>HBntory</h1>
-      <p>Le client public sera disponible ici.</p>
-    </main>
-  </body>
+    </div>
+  </header>
+
+  <main>
+    <div id="chat-history">
+      <div id="empty-state">
+        <div>
+          <div class="icon" aria-hidden="true">💬</div>
+          <p>Posez votre première question sur les produits ou le stock.</p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div class="input-bar">
+    <div class="input-inner">
+      <form id="question-form">
+        <textarea
+          id="question"
+          rows="1"
+          placeholder="Écrivez votre question..."
+          required
+        ></textarea>
+        <button type="submit" id="submit-btn" class="icon-btn btn-send" title="Envoyer" aria-label="Envoyer">
+          ▶
+        </button>
+        <button type="button" id="clear-btn" class="icon-btn btn-clear" title="Effacer la conversation" aria-label="Effacer">
+          ✕
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const chatHistory = document.getElementById('chat-history');
+    const emptyState = document.getElementById('empty-state');
+    const form = document.getElementById('question-form');
+    const questionInput = document.getElementById('question');
+    const submitBtn = document.getElementById('submit-btn');
+    const clearBtn = document.getElementById('clear-btn');
+
+    let messages = [];
+
+    function hideEmptyState() {
+      if (emptyState) emptyState.style.display = 'none';
+    }
+
+    function showEmptyState() {
+      if (emptyState) emptyState.style.display = 'flex';
+    }
+
+    function scrollToBottom() {
+      chatHistory.scrollTop = chatHistory.scrollHeight;
+    }
+
+    function escapeHtml(text) {
+      return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function renderMessage(role, text) {
+      hideEmptyState();
+
+      const wrapper = document.createElement('div');
+      wrapper.className = `message-row ${role === 'user' ? 'user' : 'ai'}`;
+
+      const bubble = document.createElement('div');
+      bubble.className = `message-bubble ${role === 'user' ? 'user-bubble' : 'ai-bubble'}`;
+
+      const label = role === 'user' ? 'Vous' : 'Assistant IA';
+      bubble.innerHTML = `
+        <div class="message-label">${label}</div>
+        <div class="message-text">${escapeHtml(text)}</div>
+      `;
+
+      wrapper.appendChild(bubble);
+      chatHistory.appendChild(wrapper);
+      scrollToBottom();
+      return wrapper;
+    }
+
+    function addMessage(role, text) {
+      messages.push({ role, text });
+      renderMessage(role, text);
+    }
+
+    function clearConversation() {
+      messages = [];
+      chatHistory.innerHTML = '';
+      chatHistory.appendChild(emptyState);
+      showEmptyState();
+    }
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+
+      const question = questionInput.value.trim();
+      if (!question) return;
+
+      addMessage('user', question);
+      questionInput.value = '';
+      questionInput.style.height = 'auto';
+
+      // UI only — AI service will be wired later
+      addMessage(
+        'ai',
+        "Le service IA n'est pas encore connecté. Votre question a bien été reçue côté interface."
+      );
+    });
+
+    clearBtn.addEventListener('click', () => {
+      if (confirm('Effacer toute la conversation ?')) {
+        clearConversation();
+      }
+    });
+
+    questionInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        form.requestSubmit();
+      }
+    });
+
+    questionInput.addEventListener('input', () => {
+      questionInput.style.height = 'auto';
+      questionInput.style.height = Math.min(questionInput.scrollHeight, 120) + 'px';
+    });
+  </script>
+</body>
 </html>
