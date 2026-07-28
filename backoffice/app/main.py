@@ -106,5 +106,5 @@ def health() -> Dict[str, str]:
     return {"status": "ok", "service": "backoffice"}
 
 # modifier selon arborescence locale
-static_dir = Path(__file__).resolve().parent.parent / "static"
-app.mount("/", StaticFiles(directory=static_dir, html=True), name="backoffice")
+frontend_dir = Path(__file__).resolve().parent.parent / "frontend"
+app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="backoffice")
