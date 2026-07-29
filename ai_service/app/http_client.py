@@ -86,6 +86,13 @@ class HttpDataClient:
         return {"X-Internal-Api-Key": self.internal_api_key}
 
     @staticmethod
+    def _raise_for_service_status(status: int, service: str) -> None:
+        if status in {401, 403}:
+            raise PermissionError(f"{service} refused the service credentials")
+        if status >= 500:
+            raise ConnectionError(f"{service} is temporarily unavailable")
+
+    @staticmethod
     def _to_agent_product(product: dict) -> dict:
         reference = product.get("sku") or product.get("id") or product.get("reference")
         return {
@@ -103,8 +110,9 @@ class HttpDataClient:
             return self._products_cache[1]
 
         status, data = self._request(f"{self.product_mcp_url}/tools/list_products")
+        self._raise_for_service_status(status, "product-mcp")
         if status != 200 or not isinstance(data, dict) or not data.get("success"):
-            return []
+            raise ValueError("Invalid product-mcp catalogue response")
         products = data.get("products") or []
         if not isinstance(products, list):
             return []
@@ -116,15 +124,13 @@ class HttpDataClient:
         if self._branches_cache and now - self._branches_cache[0] < self.cache_ttl_seconds:
             return self._branches_cache[1]
 
-        try:
-            status, data = self._request(
-                f"{self.stock_api_url}/internal/branches",
-                headers=self._internal_headers(),
-            )
-        except ConnectionError:
-            return []
+        status, data = self._request(
+            f"{self.stock_api_url}/internal/branches",
+            headers=self._internal_headers(),
+        )
+        self._raise_for_service_status(status, "backoffice")
         if status != 200 or not isinstance(data, list):
-            return []
+            raise ValueError("Invalid backoffice branches response")
         self._branches_cache = (now, data)
         return data
 
@@ -136,6 +142,7 @@ class HttpDataClient:
         status, data = self._request(
             f"{self.product_mcp_url}/tools/products/{urllib.parse.quote(key, safe='')}"
         )
+        self._raise_for_service_status(status, "product-mcp")
         if status == 200 and isinstance(data, dict) and data.get("success") and data.get("product"):
             return data["product"]
 
@@ -157,10 +164,7 @@ class HttpDataClient:
         return best
 
     def get_produit(self, nom_ou_ref: str) -> Optional[dict]:
-        try:
-            product = self.resolve_product(nom_ou_ref)
-        except (ConnectionError, ValueError):
-            return None
+        product = self.resolve_product(nom_ou_ref)
         if not product:
             return None
         return self._to_agent_product(product)
@@ -168,58 +172,62 @@ class HttpDataClient:
     def get_stock(self, nom_ou_ref: str, branche: Optional[str] = None) -> Optional[dict]:
         if not branche:
             return None
-        try:
-            product = self.resolve_product(nom_ou_ref)
-        except (ConnectionError, ValueError):
-            return None
+        product = self.resolve_product(nom_ou_ref)
         if not product or product.get("id") is None:
             return None
 
-        product_id = str(product["id"])
+        return self.get_stock_by_product_id(str(product["id"]), branche)
+
+    def get_stock_by_product_id(
+        self,
+        product_id: str,
+        branche: Optional[str],
+    ) -> Optional[dict]:
+        """Lit le stock sans résoudre une seconde fois le produit déjà identifié."""
+        if not product_id or not branche:
+            return None
         query = urllib.parse.urlencode(
             {"product_id": product_id, "branch": branche.strip()}
         )
-        try:
-            status, data = self._request(
-                f"{self.stock_api_url}/internal/stock?{query}",
-                headers=self._internal_headers(),
-            )
-        except ConnectionError:
-            return None
+        status, data = self._request(
+            f"{self.stock_api_url}/internal/stock?{query}",
+            headers=self._internal_headers(),
+        )
 
         if status == 404:
             return None
+        self._raise_for_service_status(status, "backoffice")
         if status != 200 or not isinstance(data, dict):
-            return None
+            raise ValueError("Invalid backoffice stock response")
         qty = data.get("quantity")
         if qty is None:
             return None
         return {"quantite": int(qty), "external_product_id": product_id}
 
-    def _product_label(self, product_id: str) -> str:
-        pid = str(product_id)
-        for product in self.list_products():
-            if str(product.get("id")) == pid:
-                name = product.get("name")
-                sku = product.get("sku")
-                if name and sku:
-                    return f"{name} (réf. {sku})"
-                if name:
-                    return str(name)
-                if sku:
-                    return str(sku)
-        return f"produit {pid}"
-
     def _enrich_stock_rows(self, rows: list[dict]) -> list[dict]:
+        products_by_id = {
+            str(product.get("id")): product
+            for product in self.list_products()
+            if product.get("id") is not None
+        }
         enriched: list[dict] = []
         for row in rows:
             if not isinstance(row, dict):
                 continue
             pid = str(row.get("external_product_id") or "")
+            product = products_by_id.get(pid) or {}
+            name = product.get("name")
+            sku = product.get("sku")
+            if name and sku:
+                label = f"{name} (réf. {sku})"
+            elif name or sku:
+                label = str(name or sku)
+            else:
+                label = f"produit {pid}"
             enriched.append(
                 {
                     "external_product_id": pid,
-                    "product_name": self._product_label(pid),
+                    "product_name": label,
                     "quantite": int(row.get("quantity", 0)),
                     "branch_id": row.get("branch_id"),
                     "branch_name": row.get("branch_name"),
@@ -228,17 +236,15 @@ class HttpDataClient:
         return enriched
 
     def _fetch_stock_list(self, path: str) -> list[dict]:
-        try:
-            status, data = self._request(
-                f"{self.stock_api_url}{path}",
-                headers=self._internal_headers(),
-            )
-        except ConnectionError:
-            return []
+        status, data = self._request(
+            f"{self.stock_api_url}{path}",
+            headers=self._internal_headers(),
+        )
         if status == 404:
             return []
+        self._raise_for_service_status(status, "backoffice")
         if status != 200 or not isinstance(data, list):
-            return []
+            raise ValueError("Invalid backoffice stock list response")
         return self._enrich_stock_rows(data)
 
     def list_stock_by_branch(self, branche: str) -> list[dict]:
@@ -249,13 +255,15 @@ class HttpDataClient:
         return self._fetch_stock_list(f"/internal/stock/by-branch/{encoded}")
 
     def list_stock_by_product(self, nom_ou_ref: str) -> list[dict]:
-        try:
-            product = self.resolve_product(nom_ou_ref)
-        except (ConnectionError, ValueError):
-            return []
+        product = self.resolve_product(nom_ou_ref)
         if not product or product.get("id") is None:
             return []
-        pid = urllib.parse.quote(str(product["id"]), safe="")
+        return self.list_stock_by_product_id(str(product["id"]))
+
+    def list_stock_by_product_id(self, product_id: str) -> list[dict]:
+        if not product_id:
+            return []
+        pid = urllib.parse.quote(str(product_id), safe="")
         return self._fetch_stock_list(f"/internal/stock/by-product/{pid}")
 
     def list_all_stock(self) -> list[dict]:
@@ -265,13 +273,11 @@ class HttpDataClient:
         key = (nom_ou_ref or "").strip()
         if not key:
             return None
-        try:
-            status, data = self._request(
-                f"{self.stock_api_url}/internal/branches/{urllib.parse.quote(key, safe='')}",
-                headers=self._internal_headers(),
-            )
-        except ConnectionError:
-            return None
+        status, data = self._request(
+            f"{self.stock_api_url}/internal/branches/{urllib.parse.quote(key, safe='')}",
+            headers=self._internal_headers(),
+        )
+        self._raise_for_service_status(status, "backoffice")
         if status != 200 or not isinstance(data, dict):
             return None
         return {

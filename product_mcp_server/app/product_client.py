@@ -98,22 +98,98 @@ class ProductAPIClient:
         return status, parsed
 
     def list_products(self) -> list:
-        status, data = self._do_get("/api/v1/products?limit=100&sort=name")
-        if status == 200:
-            if isinstance(data, dict):
-                if isinstance(data.get("results"), list):
-                    return data["results"]
-                if isinstance(data.get("products"), list):
-                    return data["products"]
-            if isinstance(data, list):
-                return data
-            raise ProductAPIError(
-                f"Product API returned an unexpected shape for list: {data!r}",
-                status_code=status,
+        page_size = 100
+        offset = 0
+        products: list = []
+        total_count: int | None = None
+        seen_pages: set[tuple] = set()
+        max_pages = 1000
+
+        for _page_number in range(max_pages):
+            query = urllib.parse.urlencode(
+                {"limit": page_size, "offset": offset, "sort": "name"}
             )
+            status, data = self._do_get(f"/api/v1/products?{query}")
+
+            if status != 200:
+                raise ProductAPIError(
+                    f"Product API returned unexpected status {status} "
+                    f"for list products at offset {offset}",
+                    status_code=status,
+                )
+
+            # Preserve compatibility with APIs returning a bare, unpaginated list.
+            if isinstance(data, list):
+                if offset == 0:
+                    return data
+                raise ProductAPIError(
+                    "Product API changed its list response shape while paginating",
+                    status_code=status,
+                )
+
+            if not isinstance(data, dict):
+                raise ProductAPIError(
+                    f"Product API returned an unexpected shape for list: {data!r}",
+                    status_code=status,
+                )
+
+            if isinstance(data.get("results"), list):
+                page = data["results"]
+                paginated_response = any(
+                    key in data for key in ("count", "limit", "offset")
+                )
+            elif isinstance(data.get("products"), list):
+                page = data["products"]
+                paginated_response = any(
+                    key in data for key in ("count", "limit", "offset")
+                )
+            else:
+                raise ProductAPIError(
+                    f"Product API returned an unexpected shape for list: {data!r}",
+                    status_code=status,
+                )
+
+            reported_count = data.get("count")
+            if (
+                isinstance(reported_count, int)
+                and not isinstance(reported_count, bool)
+                and reported_count >= 0
+            ):
+                total_count = reported_count
+
+            products.extend(page)
+
+            if total_count is not None and len(products) >= total_count:
+                return products
+            if not paginated_response:
+                return products
+            if not page:
+                if total_count is not None and len(products) < total_count:
+                    raise ProductAPIError(
+                        "Product API returned an empty page before the announced "
+                        f"catalog count was reached ({len(products)}/{total_count})",
+                        status_code=status,
+                    )
+                return products
+            if total_count is None and len(page) < page_size:
+                return products
+
+            page_marker = tuple(
+                str(item.get("id")) if isinstance(item, dict) else repr(item)
+                for item in page
+            )
+            if page_marker in seen_pages:
+                raise ProductAPIError(
+                    "Product API repeated a page while paginating; "
+                    "the catalogue cannot be completed safely",
+                    status_code=status,
+                )
+            seen_pages.add(page_marker)
+
+            offset += len(page)
+
         raise ProductAPIError(
-            f"Product API returned unexpected status {status} for list products",
-            status_code=status,
+            f"Product API pagination exceeded the safety limit of {max_pages} pages"
         )
 
     def get_product(self, product_id: str) -> dict:

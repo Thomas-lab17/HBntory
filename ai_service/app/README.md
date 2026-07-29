@@ -1,119 +1,70 @@
-# Couche 3 — Agent IA
+# HBntory AI Agent Service
 
-Implémentation Python des trois sous-composants demandés.
+Le service IA utilise un workflow modulaire, stateless et fondé sur les
+données réelles :
 
-## Structure
-
-```
-agent_ia/
-├── __init__.py          # exports du package
-├── intent_router.py     # (1) Intent router
-├── tool_caller.py        # (2) Tool caller (avec logs structurés)
-├── response_builder.py   # (3) Response builder (aucune invention)
-├── mcp_client.py         # interface MCPClient (Protocol) + client mock pour tester
-├── http_client.py        # HttpDataClient : vrai client contre product-mcp + API stock interne
-├── agent.py              # orchestrateur reliant les 3 sous-composants
-└── main.py                # démo exécutable
+```text
+InputGuardAgent
+  -> QueryAgent (règles rapides, Ollama optionnel si ambigu)
+  -> EntityResolverAgent (catalogue + agences)
+  -> AccessAgent
+  -> ProductAgent / StockAgent / BranchAgent
+  -> ResponseAgent
+  -> GroundingAgent
 ```
 
-## Deux clients de données disponibles
+## Principes
 
-| Client | Fichier | Usage |
-|---|---|---|
-| `MockMCPClient` | `mcp_client.py` | données factices en mémoire, pour dev/démo |
-| `HttpDataClient` | `http_client.py` | vrai appel HTTP vers `product-mcp` (produits) + API stock/backoffice interne (stock, agences), authentifiée par `X-Internal-Api-Key` |
+- Le catalogue vient exclusivement du Product MCP et contient toutes les pages
+  de l'API fournisseur.
+- Les quantités viennent exclusivement de l'API interne du backoffice.
+- Le rôle et l'agence ne sont jamais acceptés dans le JSON du navigateur.
+  Ils sont résolus depuis le cookie JWT HttpOnly via `/auth/me`.
+- Une demande refusée ou hors périmètre n'appelle aucun outil de stock.
+- Le chatbot reste en lecture seule. Une demande de gestion d'accès ne modifie
+  jamais un utilisateur et renvoie vers l'écran Utilisateurs du backoffice.
+- Une recherche produit ambiguë demande une précision.
+- L'historique fourni par le client permet les questions comme
+  « Et à Paris ? » sans mémoire globale entre utilisateurs.
 
-Les deux respectent la même interface (`get_produit`, `get_stock`, `get_branche`),
-donc `ToolCaller` et `ResponseBuilder` n'ont aucune modification à faire pour
-passer de l'un à l'autre.
+## Politique d'accès
 
-### Basculer entre les deux
+| Profil | Catalogue | Stock d'un produit précis | Stock complet d'une agence | Gestion d'accès |
+|---|---:|---:|---:|---:|
+| Anonyme | oui | oui | non | non |
+| Common | oui | oui | son agence | non |
+| Admin | oui | oui | toutes les agences | lecture seule dans le chat |
 
-Par variable d'environnement (le plus simple) :
+## API
 
-```bash
-# Mode démo (par défaut, aucune config nécessaire)
-python -m agent_ia.main
+`POST /ask`
 
-# Mode production, contre les vrais services
-export AGENT_DATA_CLIENT=http
-export PRODUCT_MCP_URL=http://product-mcp.internal:8002
-export STOCK_API_URL=http://backoffice.internal:8000
-export INTERNAL_API_KEY=xxxxx
-python -m agent_ia.main
+```json
+{
+  "question": "Y a-t-il un écran 27 pouces dans l'agence de Lyon ?",
+  "conversation_id": "optional-id",
+  "history": [
+    {"role": "user", "content": "Le produit 3 est-il disponible à Lyon ?"},
+    {"role": "assistant", "content": "Oui, 40 unités sont disponibles."}
+  ]
+}
 ```
 
-Ou explicitement en code :
+La réponse conserve les champs historiques `answer`, `intent` et `question`,
+et ajoute `status`, `request_id`, `agent`, `sources`, `access` et
+`used_history`.
 
-```python
-from agent_ia import Agent, HttpDataClient
+## Ollama optionnel
 
-agent = Agent(mcp_client=HttpDataClient(
-    product_mcp_url="http://product-mcp.internal:8002",
-    stock_api_url="http://backoffice.internal:8000",
-    internal_api_key="xxxxx",
-))
+Les questions courantes sont traitées sans modèle pour réduire la latence.
+Ollama est sollicité uniquement lorsque le routeur déterministe manque de
+confiance.
+
+```env
+AI_LLM_ENABLED=true
+OLLAMA_API_BASE=http://host.docker.internal:11434
+MODEL_NAME=gemma3:1b
 ```
 
-### Comportement en cas d'échec réseau ou de donnée absente
-
-`HttpDataClient` ne lève jamais d'exception vers l'agent en cas de panne
-réseau ou de 404 : il retourne `None` (ou liste vide). Le `ResponseBuilder`
-traduit alors cela en message explicite ("je n'ai pas trouvé...", "cette
-information manque..."), conformément à la règle "aucune invention".
-
-## Les trois sous-composants
-
-### 1. Intent router (`intent_router.py`)
-Classifie la question en `PRODUIT`, `STOCK`, `BRANCHE` ou `HORS_SCOPE`
-via un classifieur par mots-clés (facilement remplaçable par un appel
-LLM en injectant `classify_fn` dans `IntentRouter`).
-Si `HORS_SCOPE`, l'agent (`agent.py`) répond immédiatement **sans**
-appeler `ToolCaller`.
-
-### 2. Tool caller (`tool_caller.py`)
-Appelle les outils MCP nécessaires dans l'ordre logique pour
-l'intention détectée (ex : pour `STOCK`, on récupère d'abord le
-produit, puis le stock). Chaque appel est loggé avec :
-outil, paramètres, statut (`ok` / `vide` / `erreur`), durée en ms.
-
-### 3. Response builder (`response_builder.py`)
-Transforme les données réellement récupérées en réponse en français
-naturel. **Aucune invention** : si une donnée manque (produit
-introuvable, stock non renseigné, etc.), le message le dit
-explicitement plutôt que de deviner.
-
-## Utilisation
-
-```python
-from agent_ia import Agent
-
-agent = Agent()  # utilise MockMCPClient par défaut (données de démo)
-resultat = agent.repondre("Est-ce que la chaise ergonomique est disponible à Lyon ?")
-
-print(resultat.intent)   # Intent.STOCK
-print(resultat.reponse)  # "« Chaise ergonomique » est disponible à Lyon : 12 unité(s) en stock."
-```
-
-Pour brancher un vrai serveur MCP, implémentez une classe avec les
-méthodes `get_produit`, `get_stock`, `get_branche` (voir le
-`Protocol MCPClient` dans `mcp_client.py`) et injectez-la :
-
-```python
-agent = Agent(mcp_client=MonVraiClientMCP())
-```
-
-## Lancer la démo
-
-```bash
-python -m agent_ia.main
-```
-
-## Points d'extension suggérés
-
-- Remplacer le classifieur par règles de `IntentRouter` par un appel LLM
-  (structuré en JSON) pour une classification plus robuste.
-- Remplacer `_extraire_entites` (naïf) dans `agent.py` par une vraie
-  extraction d'entités (NER ou LLM structuré).
-- Adapter le format des logs de `tool_caller.py` (ex : JSON) selon
-  votre stack d'observabilité.
+Sans Ollama, le workflow continue automatiquement avec le routeur
+déterministe.

@@ -60,8 +60,14 @@ services:
       APP_ENV: ${APP_ENV:-development}
       AGENT_DATA_CLIENT: ${AGENT_DATA_CLIENT:-http}
       STOCK_API_URL: http://backoffice:8000
+      AUTH_API_URL: http://backoffice:8000
       PRODUCT_MCP_URL: http://product-mcp:8002
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key}
+      AI_LLM_ENABLED: ${AI_LLM_ENABLED:-false}
+      OLLAMA_API_BASE: ${OLLAMA_API_BASE:-http://host.docker.internal:11434}
+      MODEL_NAME: ${MODEL_NAME:-gemma3:1b}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       backoffice:
         condition: service_started

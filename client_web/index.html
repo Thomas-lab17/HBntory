@@ -115,6 +115,10 @@
 
     let messages = [];
     let busy = false;
+    let conversationId =
+      window.crypto && typeof window.crypto.randomUUID === 'function'
+        ? window.crypto.randomUUID()
+        : `conversation-${Date.now()}`;
 
     function hideEmptyState() {
       if (emptyState) emptyState.style.display = 'none';
@@ -195,6 +199,10 @@
     }
 
     function clearConversation() {
+      conversationId =
+        window.crypto && typeof window.crypto.randomUUID === 'function'
+          ? window.crypto.randomUUID()
+          : `conversation-${Date.now()}`;
       showWelcome();
     }
 
@@ -205,10 +213,21 @@
     }
 
     async function askAi(question) {
+      const history = messages
+        .slice(0, -1)
+        .slice(-10)
+        .map((message) => ({
+          role: message.role === 'user' ? 'user' : 'assistant',
+          content: message.text,
+        }));
       const response = await fetch('/api/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question }),
+        body: JSON.stringify({
+          question,
+          conversation_id: conversationId,
+          history,
+        }),
       });
 
       let data = null;
