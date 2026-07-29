@@ -50,11 +50,14 @@ class AskResponse(BaseModel):
 
 
 @app.get("/health", tags=["system"])
-def health() -> dict[str, str]:
+def health() -> dict[str, str | bool]:
+    llm = _agent.workflow.query_agent.llm
     return {
         "status": "ok",
         "service": "ai-service",
         "workflow": "multi-agent",
+        "llm_enabled": llm.enabled,
+        "llm_model": llm.model,
     }
 
 

@@ -18,7 +18,7 @@ class OllamaQueryInterpreter:
         enabled: bool | None = None,
         base_url: str | None = None,
         model: str | None = None,
-        timeout: float = 3.0,
+        timeout: float | None = None,
     ):
         if enabled is None:
             enabled = os.getenv("AI_LLM_ENABLED", "false").lower() in {
@@ -34,27 +34,37 @@ class OllamaQueryInterpreter:
         ).rstrip("/")
         configured_model = model or os.getenv("MODEL_NAME", "gemma3:1b")
         self.model = configured_model.removeprefix("ollama_chat/")
-        self.timeout = timeout
+        if timeout is None:
+            try:
+                timeout = float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "120"))
+            except ValueError:
+                timeout = 120.0
+        self.timeout = max(timeout, 1.0)
 
     def interpret(self, question: str, history: list[str]) -> dict[str, Any] | None:
         if not self.enabled:
             return None
 
-        prompt = f"""
-Tu es uniquement l'agent de compréhension de requêtes HBntory.
-Tu ne réponds jamais à la question et tu n'inventes aucune donnée.
-Retourne un objet JSON avec :
-- intents: liste parmi product_detail, product_search, stock_lookup,
-  stock_by_product, stock_by_branch, branch_info, branch_list,
-  access_info, access_management, out_of_scope
-- product_query: texte du produit ou null
-- branch: nom d'agence ou null
-- confidence: nombre entre 0 et 1
+        system_prompt = (
+            "Tu classes les questions HBntory. Tu ne réponds jamais à la "
+            "question et tu n'inventes aucune donnée. Réponds uniquement avec "
+            "un objet JSON complet, sans explication."
+        )
+        user_prompt = f"""
+Format obligatoire :
+{{"intents":["stock_lookup"],"product_query":"écran 27 pouces","branch":"Lyon","confidence":0.9}}
+
+Intentions autorisées :
+product_detail, product_search, stock_lookup, stock_by_product,
+stock_by_branch, branch_info, branch_list, access_info,
+access_management, out_of_scope.
+
+Utilise null lorsque le produit ou l'agence n'est pas précisé.
 
 Historique utilisateur :
 {json.dumps(history[-4:], ensure_ascii=False)}
 
-Question actuelle :
+Question à analyser :
 {json.dumps(question, ensure_ascii=False)}
 """.strip()
         payload = json.dumps(
@@ -62,8 +72,15 @@ Question actuelle :
                 "model": self.model,
                 "stream": False,
                 "format": "json",
-                "messages": [{"role": "user", "content": prompt}],
-                "options": {"temperature": 0},
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                "options": {
+                    "temperature": 0,
+                    "num_ctx": 512,
+                    "num_predict": 64,
+                },
             }
         ).encode("utf-8")
         request = urllib.request.Request(

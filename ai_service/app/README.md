@@ -54,17 +54,34 @@ La réponse conserve les champs historiques `answer`, `intent` et `question`,
 et ajoute `status`, `request_id`, `agent`, `sources`, `access` et
 `used_history`.
 
-## Ollama optionnel
+## Ollama local
 
 Les questions courantes sont traitées sans modèle pour réduire la latence.
 Ollama est sollicité uniquement lorsque le routeur déterministe manque de
-confiance.
+confiance. Il traduit alors la question en plan JSON structuré ; il ne répond
+jamais directement à l'utilisateur et n'accède ni au stock ni aux permissions.
 
 ```env
 AI_LLM_ENABLED=true
-OLLAMA_API_BASE=http://host.docker.internal:11434
+OLLAMA_API_BASE=http://ollama:11434
 MODEL_NAME=gemma3:1b
+OLLAMA_TIMEOUT_SECONDS=120
+OLLAMA_KEEP_ALIVE=30m
+OLLAMA_CONTEXT_LENGTH=512
 ```
 
-Sans Ollama, le workflow continue automatiquement avec le routeur
-déterministe.
+Le `docker-compose.yml` démarre Ollama, conserve ses modèles dans le volume
+`ollama_data` et télécharge automatiquement `gemma3:1b` au premier démarrage.
+Ce modèle d'environ 815 Mo offre un meilleur compromis que la variante 270M
+pour comprendre les formulations françaises tout en restant exploitable sur
+une machine de développement. Il suffit de remplacer `MODEL_NAME` dans `.env`
+pour évaluer un autre modèle.
+
+Après le téléchargement, `ollama-warmup` exécute une inférence minimale avant
+de démarrer l'AI Service. Le modèle reste chargé pendant 30 minutes et le
+client accepte jusqu'à 120 secondes pour une interprétation sur CPU. Le
+contexte est limité à 512 tokens, ce qui suffit au planificateur structuré et
+réduit son empreinte.
+
+En cas d'indisponibilité ou de réponse JSON invalide d'Ollama, le workflow
+continue automatiquement avec le routeur déterministe.
