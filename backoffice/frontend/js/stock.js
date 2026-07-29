@@ -212,6 +212,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     return button;
   }
 
+  function compareByStockThenName(
+    firstProductId,
+    firstQuantity,
+    secondProductId,
+    secondQuantity
+  ) {
+    const quantityComparison = firstQuantity - secondQuantity;
+    if (quantityComparison !== 0) return quantityComparison;
+
+    const firstProduct = state.productsById.get(String(firstProductId));
+    const secondProduct = state.productsById.get(String(secondProductId));
+    const firstName = firstProduct?.name || String(firstProductId);
+    const secondName = secondProduct?.name || String(secondProductId);
+    return firstName.localeCompare(secondName, 'fr', { sensitivity: 'base' });
+  }
+
   function showView(viewId, breadcrumbLabel, productId = '') {
     document.querySelectorAll('.app-view').forEach((view) => {
       const isTarget = view.id === viewId;
@@ -478,12 +494,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const visibleStocks = state.stocks
       .filter(stockMatches)
-      .sort((first, second) => {
-        const firstIsOut = first.quantity === 0;
-        const secondIsOut = second.quantity === 0;
-        if (firstIsOut === secondIsOut) return 0;
-        return firstIsOut ? -1 : 1;
-      });
+      .sort((first, second) => compareByStockThenName(
+        first.external_product_id,
+        first.quantity,
+        second.external_product_id,
+        second.quantity
+      ));
     const totalPages = Math.max(1, Math.ceil(visibleStocks.length / STOCK_PAGE_SIZE));
     state.stockPage = Math.min(state.stockPage, totalPages);
     const start = (state.stockPage - 1) * STOCK_PAGE_SIZE;
@@ -570,7 +586,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function renderCatalog() {
     elements.catalogGrid.replaceChildren();
-    const products = state.products.filter(catalogMatches);
+    const products = state.products
+      .filter(catalogMatches)
+      .sort((first, second) => compareByStockThenName(
+        first.id,
+        stockQuantityFor(first.id),
+        second.id,
+        stockQuantityFor(second.id)
+      ));
     const totalPages = Math.max(1, Math.ceil(products.length / CATALOG_PAGE_SIZE));
     state.catalogPage = Math.min(state.catalogPage, totalPages);
     const start = (state.catalogPage - 1) * CATALOG_PAGE_SIZE;
