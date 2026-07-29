@@ -1,8 +1,11 @@
 # Client Web
 
-Objectif : proposer une page publique minimale où un visiteur peut poser une
-question sur les produits et les stocks, sans se connecter.
+Page publique (Nginx) pour poser une question sur les produits et les stocks,
+sans authentification.
 
-L'interface appellera le service IA, affichera un état de chargement puis une
-réponse ou un message d'erreur explicite. Elle est distribuée par Nginx dans le
-conteneur et accessible localement sur le port `8080` par défaut.
+L'interface appelle le service IA via un reverse proxy Nginx :
+
+- UI : `http://localhost:8080`
+- Proxy : `POST /api/ask` → `ai-service:8001/ask`
+
+États gérés : chargement, réponse, erreur de service.

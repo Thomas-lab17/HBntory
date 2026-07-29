@@ -14,12 +14,14 @@ SANS appeler le moindre outil (économie de latence et de coût, et on
 from __future__ import annotations
 
 import logging
+import os
 import re
 from dataclasses import dataclass
 from typing import Optional
 
 from .intent_router import Intent, IntentRouter
 from .mcp_client import MCPClient, MockMCPClient
+from .http_client import HttpDataClient
 from .response_builder import ResponseBuilder
 from .tool_caller import ToolCaller, ToolCallResult
 
@@ -41,12 +43,29 @@ _BRANCHES_CONNUES = ["lyon", "paris"]
 _PRODUITS_CONNUS = ["chaise ergonomique", "bureau assis-debout"]
 
 
+def build_default_mcp_client() -> MCPClient:
+    """
+    Choisit le client de données par défaut selon l'environnement :
+
+        AGENT_DATA_CLIENT=http  -> HttpDataClient (product-mcp + API stock réelle)
+        AGENT_DATA_CLIENT=mock  -> MockMCPClient (données de démo, par défaut)
+
+    Permet de lancer l'agent en mode démo sans rien configurer, et de
+    basculer en production en définissant simplement la variable
+    d'environnement (+ PRODUCT_MCP_URL / STOCK_API_URL / INTERNAL_API_KEY).
+    """
+    mode = os.getenv("AGENT_DATA_CLIENT", "mock").strip().lower()
+    if mode == "http":
+        return HttpDataClient()
+    return MockMCPClient()
+
+
 class Agent:
     """Orchestrateur de la Couche 3 — Agent IA."""
 
     def __init__(self, mcp_client: Optional[MCPClient] = None):
         self.intent_router = IntentRouter()
-        self.tool_caller = ToolCaller(mcp_client or MockMCPClient())
+        self.tool_caller = ToolCaller(mcp_client or build_default_mcp_client())
         self.response_builder = ResponseBuilder()
 
     def repondre(self, question: str) -> AgentAnswer:

@@ -1,50 +1,45 @@
 """
 product_tools.py
 ------------------
-The actual behaviour behind each MCP tool, kept separate from the MCP SDK
-wiring (server.py) so it can be unit-/manually-tested with plain Python,
-with no MCP runtime required.
-
-Each function returns a plain JSON-serializable dict, and NEVER raises --
-all Product API failures are converted into a clear, structured error
-payload so the calling AI agent always gets an explicit answer instead of
-a crash or a silent empty result.
+Behaviour behind each product tool. Never raises — always returns a structured dict.
 """
 
-from product_client import (
-    ProductAPIClient,
-    ProductNotFoundError,
-    ProductAPIConnectionError,
-    ProductAPIError,
-)
+from __future__ import annotations
+
+try:
+    from app.product_client import (
+        ProductAPIClient,
+        ProductAPIConnectionError,
+        ProductAPIError,
+        ProductNotFoundError,
+    )
+except ImportError:  # script / MCP stdio entry
+    from product_client import (
+        ProductAPIClient,
+        ProductAPIConnectionError,
+        ProductAPIError,
+        ProductNotFoundError,
+    )
 
 _client = ProductAPIClient()
 
 
 def _normalize_product(p: dict) -> dict:
-    """Map the raw API product shape to the stable shape we expose to the
-    AI agent, so upstream API changes don't automatically leak through."""
+    price = p.get("price", p.get("unit_price"))
+    sku = p.get("sku")
     return {
-        "id": str(p.get("id")),
+        "id": str(p.get("id")) if p.get("id") is not None else None,
+        "sku": sku,
         "name": p.get("name"),
-        "price": p.get("price"),
+        "price": price,
         "category": p.get("category"),
         "in_stock": p.get("in_stock", p.get("inStock")),
         "description": p.get("description"),
+        "currency": p.get("currency"),
     }
 
 
 def list_products_impl() -> dict:
-    """
-    List all available products.
-
-    Output (success):
-        {"success": true, "count": <int>, "products": [ {id, name, price,
-         category, in_stock, description}, ... ]}
-    Output (failure):
-        {"success": false, "error_type": "connection_error" | "api_error",
-         "message": <str>, "status_code": <int|null>}
-    """
     try:
         raw_products = _client.list_products()
         products = [_normalize_product(p) for p in raw_products]
@@ -66,19 +61,6 @@ def list_products_impl() -> dict:
 
 
 def get_product_impl(product_id: str) -> dict:
-    """
-    Get details for a single product by id.
-
-    Output (success):
-        {"success": true, "product": {id, name, price, category,
-         in_stock, description}}
-    Output (not found):
-        {"success": false, "error_type": "not_found", "message": <str>,
-         "status_code": 404}
-    Output (other failure):
-        {"success": false, "error_type": "connection_error" | "api_error"
-         | "invalid_input", "message": <str>, "status_code": <int|null>}
-    """
     if not product_id or not str(product_id).strip():
         return {
             "success": False,

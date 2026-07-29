@@ -44,6 +44,7 @@ services:
       DEMO_ADMIN_PASSWORD: ${DEMO_ADMIN_PASSWORD:-Admin123!}
       DEMO_COMMON_PASSWORD: ${DEMO_COMMON_PASSWORD:-Test1234!}
       PRODUCT_API_URL: ${PRODUCT_API_URL:-http://external-products-api:5000}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key}
     depends_on:
       postgres:
         condition: service_healthy
@@ -59,6 +60,7 @@ services:
       APP_ENV: ${APP_ENV:-development}
       STOCK_API_URL: http://backoffice:8000
       PRODUCT_MCP_URL: http://product-mcp:8002
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key}
     depends_on:
       backoffice:
         condition: service_started
@@ -73,6 +75,7 @@ services:
     environment:
       APP_ENV: ${APP_ENV:-development}
       PRODUCT_API_URL: ${PRODUCT_API_URL:-http://external-products-api:5000}
+      PRODUCT_API_BASE_URL: ${PRODUCT_API_URL:-http://external-products-api:5000}
     depends_on:
       external-products-api:
         condition: service_healthy
@@ -83,8 +86,7 @@ services:
   client-web:
     build: ./client_web
     depends_on:
-      ai-service:
-        condition: service_started
+      - ai-service
     ports:
       - "${CLIENT_WEB_PORT:-8080}:80"
     restart: unless-stopped

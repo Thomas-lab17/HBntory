@@ -1,7 +1,42 @@
+# Secrets / environment
 .env
-.idea/
+.env.*
+!.env.example
+!**/.env.example
+
+# Keys & certificates
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_rsa.*
+*.keystore
+
+# Python
 __pycache__/
 *.py[cod]
+*$py.class
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .venv/
+venv/
+*.egg-info/
+.coverage
+htmlcov/
+dist/
+build/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local runtime / data
 postgres_data/
+*.log
+*.env.example
+
+\hbntory-products-api

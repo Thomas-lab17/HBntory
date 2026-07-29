@@ -47,7 +47,8 @@ class ResponseBuilder:
         parties = [f"{produit.get('nom', nom_demande)} (réf. {produit.get('reference', 'inconnue')})."]
 
         if produit.get("prix") is not None:
-            parties.append(f"Prix : {produit['prix']} €.")
+            devise = produit.get("currency") or "€"
+            parties.append(f"Prix : {produit['prix']} {devise}.")
         else:
             parties.append("Le prix n'est pas renseigné dans les données disponibles.")
 
