@@ -27,6 +27,20 @@ from .tool_caller import ToolCaller, ToolCallResult
 
 logger = logging.getLogger("agent_ia.agent")
 
+_PRODUCT_SEARCH_ALIASES = {
+    "écran": "monitor",
+    "ecran": "monitor",
+    "moniteur": "monitor",
+    "pouce": "inch",
+    "pouces": "inch",
+}
+
+_PRODUCT_SEARCH_STOP_WORDS = {
+    "agence", "article", "avoir", "dans", "de", "des", "disponible",
+    "du", "en", "est", "il", "la", "le", "les", "magasin", "produit",
+    "stock", "un", "une", "vous",
+}
+
 
 @dataclass
 class AgentAnswer:
@@ -157,6 +171,33 @@ class Agent:
             if sku and re.search(rf"\b{re.escape(sku)}\b", question_raw, flags=re.I):
                 return sku
 
+        search_question = self._normalize_product_search(question_lower)
+        query_tokens = {
+            token
+            for token in re.findall(r"\b[\w]+\b", search_question)
+            if token not in _PRODUCT_SEARCH_STOP_WORDS and len(token) > 1
+        }
+        best_product: Optional[dict] = None
+        best_score = 0
+        for product in products:
+            searchable = self._normalize_product_search(
+                " ".join(
+                    str(product.get(field) or "")
+                    for field in ("name", "description", "category", "sku")
+                ).lower()
+            )
+            product_tokens = set(re.findall(r"\b[\w]+\b", searchable))
+            matching_tokens = query_tokens & product_tokens
+            score = sum(3 if token.isdigit() else 1 for token in matching_tokens)
+            if score > best_score:
+                best_product = product
+                best_score = score
+
+        # Deux indices textuels, ou une dimension numérique accompagnée d'un
+        # autre indice, suffisent pour identifier un produit du catalogue.
+        if best_product is not None and best_score >= 2:
+            return str(best_product.get("name") or best_product.get("sku"))
+
         identifier = re.search(
             r"\b(?:produit|product|id|référence|reference)\s*[#:]?\s*(\d+)\b",
             question_lower,
@@ -173,3 +214,15 @@ class Agent:
             if token in known_ids:
                 return token
         return None
+
+    @staticmethod
+    def _normalize_product_search(text: str) -> str:
+        normalized = text
+        for source, target in _PRODUCT_SEARCH_ALIASES.items():
+            normalized = re.sub(
+                rf"\b{re.escape(source)}\b",
+                target,
+                normalized,
+                flags=re.I,
+            )
+        return normalized

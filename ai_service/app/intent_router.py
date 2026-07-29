@@ -47,7 +47,7 @@ _KEYWORDS: dict[Intent, list[str]] = {
     Intent.STOCK: [
         "stock", "disponible", "disponibilité", "quantité",
         "en rupture", "rupture de stock", "combien reste",
-        "reste-t-il", "en réserve",
+        "reste-t-il", "en réserve", "y a t il", "avez vous", "dispo",
     ],
     Intent.BRANCHE: [
         "agence", "succursale", "magasin", "branche", "point de vente",

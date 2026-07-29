@@ -12,7 +12,7 @@ from sqlalchemy.orm import joinedload
 from app.auth import create_auth_router
 from app.database import SessionLocal
 from app.models import User
-from app.routers import branches, products, stock, users
+from app.routers import branches, internal, products, stock, users
 
 
 def find_by_username(username: str) -> Optional[User]:
@@ -62,6 +62,7 @@ app.include_router(products.router)
 app.include_router(stock.router)
 app.include_router(users.router)
 app.include_router(branches.router)
+app.include_router(internal.router)
 
 
 @app.get("/health")
