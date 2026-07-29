@@ -50,25 +50,42 @@ def _get_json(path: str, params: dict[str, Any] | None = None) -> dict[str, Any]
 
 
 def list_products() -> list[dict[str, Any]]:
-    """Retourne le catalogue actif, trié par nom."""
-    payload = _get_json(
-        "/api/v1/products",
-        params={"limit": 100, "sort": "name"},
-    )
-    results = payload.get("results")
-    if not isinstance(results, list):
-        raise ProductAPIError("Réponse invalide de l'API Product.")
+    """Retourne tout le catalogue actif du fournisseur, trié par nom."""
+    products: list[dict[str, Any]] = []
+    offset = 0
 
-    products = [
-        product
-        for product in results
-        if isinstance(product, dict)
-        and product.get("id") is not None
-        and isinstance(product.get("name"), str)
-    ]
-    if len(products) != len(results):
-        raise ProductAPIError("Un produit reçu est invalide.")
-    return products
+    while True:
+        params: dict[str, Any] = {"limit": 100, "sort": "name"}
+        if offset:
+            params["offset"] = offset
+
+        payload = _get_json("/api/v1/products", params=params)
+        results = payload.get("results")
+        count = payload.get("count")
+        if (
+            not isinstance(results, list)
+            or not isinstance(count, int)
+            or isinstance(count, bool)
+            or count < 0
+        ):
+            raise ProductAPIError("Réponse invalide de l'API Product.")
+
+        page = [
+            product
+            for product in results
+            if isinstance(product, dict)
+            and product.get("id") is not None
+            and isinstance(product.get("name"), str)
+        ]
+        if len(page) != len(results):
+            raise ProductAPIError("Un produit reçu est invalide.")
+
+        products.extend(page)
+        offset += len(page)
+        if offset >= count:
+            return products
+        if not page:
+            raise ProductAPIError("Le catalogue fournisseur est incomplet.")
 
 
 def get_product(identifier: str) -> dict[str, Any]:

@@ -4,6 +4,8 @@ from typing import Any, Optional
 from fastapi import Cookie, Depends, HTTPException, status
 import jwt
 import os
+from sqlalchemy import select
+from sqlalchemy.orm import joinedload
 
 from app.database import SessionLocal
 from app.models import User
@@ -22,7 +24,11 @@ def get_current_user(token: Optional[str] = Cookie(default=None, alias=COOKIE_NA
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
     with SessionLocal() as db:
-        user = db.get(User, user_id)
+        user = db.scalar(
+            select(User)
+            .options(joinedload(User.branch))
+            .where(User.id == user_id)
+        )
         if user is None or user.deleted_at is not None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
         return user

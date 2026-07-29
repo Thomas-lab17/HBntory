@@ -1,99 +1,144 @@
-"""User management routes for admin users."""
+"""Gestion des utilisateurs réservée aux administrateurs."""
 
-from typing import List, Optional
+from datetime import datetime, timezone
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session, joinedload
 
-from app.database import SessionLocal
-from app.dependencies import get_current_admin
-from app.models import User, UserRole, Branch
 from app.auth import hash_password
+from app.database import get_db
+from app.dependencies import get_current_admin
+from app.models import Branch, User, UserRole
+from app.password_policy import validate_password_strength
+
 
 router = APIRouter(prefix="/users", tags=["users"])
 
 
 class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     username: str
     role: str
     branch_id: Optional[int] = None
-
-    class Config:
-        from_attributes = True
+    branch_name: Optional[str] = None
 
 
 class CreateUserRequest(BaseModel):
-    username: str
+    username: str = Field(min_length=3, max_length=80)
     password: str
-    branch_id: int
+    branch_id: int = Field(gt=0)
+
+    @field_validator("username")
+    @classmethod
+    def normalize_username(cls, value: str) -> str:
+        normalized = value.strip().casefold()
+        if not normalized.replace("-", "").replace("_", "").isalnum():
+            raise ValueError(
+                "Le nom d’utilisateur accepte uniquement lettres, chiffres, - et _."
+            )
+        return normalized
+
+    @field_validator("password")
+    @classmethod
+    def strong_password(cls, value: str) -> str:
+        return validate_password_strength(value)
 
 
 class UpdatePasswordRequest(BaseModel):
     new_password: str
 
+    @field_validator("new_password")
+    @classmethod
+    def strong_password(cls, value: str) -> str:
+        return validate_password_strength(value)
+
 
 class UpdateBranchRequest(BaseModel):
-    branch_id: int
+    branch_id: int = Field(gt=0)
 
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+def _response(user: User) -> UserResponse:
+    return UserResponse(
+        id=user.id,
+        username=user.username,
+        role=user.role,
+        branch_id=user.branch_id,
+        branch_name=user.branch.name if user.branch else None,
+    )
 
 
-@router.get("/", response_model=List[UserResponse])
+def _common_user(db: Session, user_id: int) -> User:
+    user = db.scalar(
+        select(User)
+        .options(joinedload(User.branch))
+        .where(
+            User.id == user_id,
+            User.role == UserRole.COMMON,
+            User.deleted_at.is_(None),
+        )
+    )
+    if user is None:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable.")
+    return user
+
+
+@router.get("/", response_model=list[UserResponse])
 def list_users(
     admin=Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    """List all common users (excluding soft-deleted)."""
+    """Liste les utilisateurs actifs avec le nom de leur agence."""
     users = db.scalars(
-        select(User).where(
+        select(User)
+        .options(joinedload(User.branch))
+        .where(
             User.role == UserRole.COMMON,
-            User.deleted_at.is_(None)
+            User.deleted_at.is_(None),
         )
+        .order_by(User.username)
     ).all()
-    return users
+    return [_response(user) for user in users]
 
 
-@router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/",
+    response_model=UserResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def create_user(
     payload: CreateUserRequest,
     admin=Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    """Create a new common user and assign them to a branch."""
-    # Check if username exists
-    existing = db.scalar(select(User).where(User.username == payload.username))
+    """Crée un utilisateur commun et l’affecte à une agence."""
+    existing = db.scalar(
+        select(User).where(func.lower(User.username) == payload.username)
+    )
     if existing:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already exists",
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Ce nom d’utilisateur existe déjà.",
         )
 
-    # Check branch exists
     branch = db.get(Branch, payload.branch_id)
-    if not branch:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Branch not found",
-        )
+    if branch is None:
+        raise HTTPException(status_code=404, detail="Agence introuvable.")
 
     user = User(
         username=payload.username,
         password_hash=hash_password(payload.password),
         role=UserRole.COMMON,
-        branch_id=payload.branch_id,
+        branch=branch,
     )
     db.add(user)
     db.commit()
     db.refresh(user)
-    return user
+    return _response(user)
 
 
 @router.patch("/{user_id}/password", response_model=UserResponse)
@@ -103,15 +148,12 @@ def change_password(
     admin=Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    """Change a common user's password."""
-    user = db.get(User, user_id)
-    if not user or user.role != UserRole.COMMON:
-        raise HTTPException(status_code=404, detail="User not found")
-
+    """Change le mot de passe d’un utilisateur commun."""
+    user = _common_user(db, user_id)
     user.password_hash = hash_password(payload.new_password)
     db.commit()
     db.refresh(user)
-    return user
+    return _response(user)
 
 
 @router.patch("/{user_id}/branch", response_model=UserResponse)
@@ -121,19 +163,16 @@ def change_branch(
     admin=Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    """Change a common user's assigned branch."""
-    user = db.get(User, user_id)
-    if not user or user.role != UserRole.COMMON:
-        raise HTTPException(status_code=404, detail="User not found")
-
+    """Réaffecte un utilisateur à une agence."""
+    user = _common_user(db, user_id)
     branch = db.get(Branch, payload.branch_id)
-    if not branch:
-        raise HTTPException(status_code=400, detail="Branch not found")
+    if branch is None:
+        raise HTTPException(status_code=404, detail="Agence introuvable.")
 
-    user.branch_id = payload.branch_id
+    user.branch = branch
     db.commit()
     db.refresh(user)
-    return user
+    return _response(user)
 
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -142,11 +181,7 @@ def delete_user(
     admin=Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    """Soft-delete a common user."""
-    user = db.get(User, user_id)
-    if not user or user.role != UserRole.COMMON:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    from datetime import datetime, timezone
+    """Supprime logiquement un utilisateur commun."""
+    user = _common_user(db, user_id)
     user.deleted_at = datetime.now(timezone.utc)
     db.commit()

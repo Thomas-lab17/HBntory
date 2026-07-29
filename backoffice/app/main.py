@@ -4,83 +4,52 @@ import os
 from pathlib import Path
 from typing import Dict, Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
+from sqlalchemy.orm import joinedload
 
-from app.auth import create_auth_router, hash_password
-from app.database import Base, SessionLocal, engine
-from app.models import Branch, Stock, User, UserRole
-from app.routers import products, stock, users
+from app.auth import create_auth_router
+from app.database import SessionLocal
+from app.models import User
+from app.routers import branches, products, stock, users
 
 
 def find_by_username(username: str) -> Optional[User]:
     with SessionLocal() as db:
-        return db.scalar(select(User).where(User.username == username))
+        return db.scalar(
+            select(User)
+            .options(joinedload(User.branch))
+            .where(User.username == username)
+        )
 
 
 def find_by_id(user_id: int) -> Optional[User]:
     with SessionLocal() as db:
-        return db.get(User, user_id)
-
-
-def seed_demo_data() -> None:
-    """Ajoute les données du README une seule fois en développement."""
-    if os.getenv("APP_ENV", "development") == "production":
-        return
-
-    with SessionLocal() as db:
-        paris = db.scalar(select(Branch).where(Branch.name == "Paris"))
-        lyon = db.scalar(select(Branch).where(Branch.name == "Lyon"))
-        if paris is None:
-            paris = Branch(name="Paris")
-            db.add(paris)
-        if lyon is None:
-            lyon = Branch(name="Lyon")
-            db.add(lyon)
-        db.flush()
-
-        if db.scalar(select(User).where(User.username == "admin")) is None:
-            db.add(
-                User(
-                    username="admin",
-                    password_hash=hash_password(
-                        os.getenv("DEMO_ADMIN_PASSWORD", "admin")
-                    ),
-                    role=UserRole.ADMIN,
-                )
-            )
-
-        if db.scalar(select(User).where(User.username == "personne1")) is None:
-            db.add(
-                User(
-                    username="personne1",
-                    password_hash=hash_password(
-                        os.getenv("DEMO_COMMON_PASSWORD", "common")
-                    ),
-                    role=UserRole.COMMON,
-                    branch=paris,
-                )
-            )
-
-        stock_exists = db.scalar(
-            select(Stock).where(
-                Stock.branch_id == paris.id,
-                Stock.external_product_id == "123",
-            )
+        return db.scalar(
+            select(User)
+            .options(joinedload(User.branch))
+            .where(User.id == user_id)
         )
-        if stock_exists is None:
-            db.add(
-                Stock(
-                    branch=paris,
-                    external_product_id="123",
-                    quantity=10,
-                )
-            )
-        db.commit()
 
 
 app = FastAPI(title="HBntory Backoffice API", version="0.1.0")
+
+
+@app.middleware("http")
+async def disable_frontend_cache_in_development(request: Request, call_next):
+    """Évite de conserver d'anciens assets pendant les itérations locales."""
+    response = await call_next(request)
+    is_frontend_asset = (
+        request.url.path == "/"
+        or request.url.path.endswith((".html", ".css", ".js"))
+    )
+    if os.getenv("APP_ENV", "development") != "production" and is_frontend_asset:
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+    return response
+
+
 app.include_router(
     create_auth_router(
         find_by_username,
@@ -92,13 +61,7 @@ app.include_router(
 app.include_router(products.router)
 app.include_router(stock.router)
 app.include_router(users.router)
-
-
-@app.on_event("startup")
-def create_tables() -> None:
-    """Crée les tables au démarrage."""
-    Base.metadata.create_all(bind=engine)
-    seed_demo_data()
+app.include_router(branches.router)
 
 
 @app.get("/health")
