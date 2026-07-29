@@ -77,22 +77,50 @@ class ToolCaller:
             )
 
         elif intent == Intent.STOCK:
-            # Pour une question de stock, on a souvent aussi besoin des
-            # infos produit pour construire une réponse complète : on
-            # appelle donc les deux outils, dans l'ordre logique.
-            self._appeler(
-                result, "get_produit",
-                {"nom_ou_ref": entites.get("produit", "")},
-                cle_resultat="produit",
-            )
-            self._appeler(
-                result, "get_stock",
-                {
-                    "nom_ou_ref": entites.get("produit", ""),
-                    "branche": entites.get("branche"),
-                },
-                cle_resultat="stock",
-            )
+            has_produit = bool(entites.get("produit"))
+            has_branche = bool(entites.get("branche"))
+
+            if has_produit and has_branche:
+                result.donnees["stock_mode"] = "single"
+                self._appeler(
+                    result, "get_produit",
+                    {"nom_ou_ref": entites.get("produit", "")},
+                    cle_resultat="produit",
+                )
+                self._appeler(
+                    result, "get_stock",
+                    {
+                        "nom_ou_ref": entites.get("produit", ""),
+                        "branche": entites.get("branche"),
+                    },
+                    cle_resultat="stock",
+                )
+            elif has_branche and not has_produit:
+                result.donnees["stock_mode"] = "by_branch"
+                self._appeler(
+                    result, "list_stock_by_branch",
+                    {"branche": entites.get("branche", "")},
+                    cle_resultat="stocks",
+                )
+            elif has_produit and not has_branche:
+                result.donnees["stock_mode"] = "by_product"
+                self._appeler(
+                    result, "get_produit",
+                    {"nom_ou_ref": entites.get("produit", "")},
+                    cle_resultat="produit",
+                )
+                self._appeler(
+                    result, "list_stock_by_product",
+                    {"nom_ou_ref": entites.get("produit", "")},
+                    cle_resultat="stocks",
+                )
+            else:
+                result.donnees["stock_mode"] = "all"
+                self._appeler(
+                    result, "list_all_stock",
+                    {},
+                    cle_resultat="stocks",
+                )
 
         elif intent == Intent.BRANCHE:
             self._appeler(

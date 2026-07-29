@@ -1,10 +1,17 @@
 # Product MCP Server
 
-Objectif : fournir à l'assistant IA un accès contrôlé à l'API Product externe,
-sans mélanger cette intégration avec les données locales de stock.
+Isole l’accès au catalogue produit externe et expose des outils stables pour l’IA.
 
-À l'étape dédiée, ce service proposera les outils MCP `list_products` et
-`get_product_details(product_id)`, avec des réponses claires pour les produits inconnus,
-les erreurs réseau et les indisponibilités de l'API externe.
+## HTTP (conteneur Docker)
 
-Le conteneur expose temporairement `GET /health` sur le port `8002`.
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/health` | Santé |
+| `GET` | `/tools/list_products` | Liste catalogue |
+| `GET` | `/tools/products/{id}` | Détail par id ou SKU |
+
+Env : `PRODUCT_API_URL` (ex. `http://external-products-api:5000`).
+
+## MCP stdio (optionnel)
+
+`app/server.py` pour le protocole MCP classique (`list_products`, `get_product`).
