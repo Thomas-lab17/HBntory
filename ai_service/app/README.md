@@ -10,10 +10,57 @@ agent_ia/
 ├── intent_router.py     # (1) Intent router
 ├── tool_caller.py        # (2) Tool caller (avec logs structurés)
 ├── response_builder.py   # (3) Response builder (aucune invention)
-├── mcp_client.py         # interface MCP + client mock pour tester
+├── mcp_client.py         # interface MCPClient (Protocol) + client mock pour tester
+├── http_client.py        # HttpDataClient : vrai client contre product-mcp + API stock interne
 ├── agent.py              # orchestrateur reliant les 3 sous-composants
 └── main.py                # démo exécutable
 ```
+
+## Deux clients de données disponibles
+
+| Client | Fichier | Usage |
+|---|---|---|
+| `MockMCPClient` | `mcp_client.py` | données factices en mémoire, pour dev/démo |
+| `HttpDataClient` | `http_client.py` | vrai appel HTTP vers `product-mcp` (produits) + API stock/backoffice interne (stock, agences), authentifiée par `X-Internal-Api-Key` |
+
+Les deux respectent la même interface (`get_produit`, `get_stock`, `get_branche`),
+donc `ToolCaller` et `ResponseBuilder` n'ont aucune modification à faire pour
+passer de l'un à l'autre.
+
+### Basculer entre les deux
+
+Par variable d'environnement (le plus simple) :
+
+```bash
+# Mode démo (par défaut, aucune config nécessaire)
+python -m agent_ia.main
+
+# Mode production, contre les vrais services
+export AGENT_DATA_CLIENT=http
+export PRODUCT_MCP_URL=http://product-mcp.internal:8002
+export STOCK_API_URL=http://backoffice.internal:8000
+export INTERNAL_API_KEY=xxxxx
+python -m agent_ia.main
+```
+
+Ou explicitement en code :
+
+```python
+from agent_ia import Agent, HttpDataClient
+
+agent = Agent(mcp_client=HttpDataClient(
+    product_mcp_url="http://product-mcp.internal:8002",
+    stock_api_url="http://backoffice.internal:8000",
+    internal_api_key="xxxxx",
+))
+```
+
+### Comportement en cas d'échec réseau ou de donnée absente
+
+`HttpDataClient` ne lève jamais d'exception vers l'agent en cas de panne
+réseau ou de 404 : il retourne `None` (ou liste vide). Le `ResponseBuilder`
+traduit alors cela en message explicite ("je n'ai pas trouvé...", "cette
+information manque..."), conformément à la règle "aucune invention".
 
 ## Les trois sous-composants
 

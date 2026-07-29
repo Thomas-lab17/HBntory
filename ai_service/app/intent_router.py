@@ -82,25 +82,20 @@ class IntentRouter:
                 if kw in normalized:
                     scores[intent].append(kw)
 
-        if not any(scores.values()):
+        # On choisit l'intention avec le plus de mots-clés trouvés.
+        best_intent, best_matches = max(
+            scores.items(), key=lambda item: len(item[1])
+        )
+
+        if not best_matches:
             return IntentResult(
                 intent=Intent.HORS_SCOPE,
                 confidence=1.0,
                 matched_keywords=[],
             )
 
-        # Priorité métier : stock > branche > produit en cas d'égalité.
-        priority = {
-            Intent.STOCK: 3,
-            Intent.BRANCHE: 2,
-            Intent.PRODUIT: 1,
-            Intent.HORS_SCOPE: 0,
-        }
-        best_intent, best_matches = max(
-            scores.items(),
-            key=lambda item: (len(item[1]), priority.get(item[0], 0)),
-        )
-
+        # Confiance proportionnelle au nombre de mots-clés trouvés
+        # (plafonnée à 0.95 pour un classifieur par règles, jamais 100% sûr).
         confidence = min(0.5 + 0.15 * len(best_matches), 0.95)
 
         return IntentResult(
