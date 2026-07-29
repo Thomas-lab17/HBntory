@@ -64,60 +64,19 @@ services:
       PRODUCT_MCP_URL: http://product-mcp:8002
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key}
       AI_LLM_ENABLED: ${AI_LLM_ENABLED:-true}
-      OLLAMA_API_BASE: ${OLLAMA_API_BASE:-http://ollama:11434}
+      OLLAMA_API_BASE: ${OLLAMA_API_BASE:-http://host.docker.internal:11434}
       MODEL_NAME: ${MODEL_NAME:-gemma3:1b}
       OLLAMA_TIMEOUT_SECONDS: ${OLLAMA_TIMEOUT_SECONDS:-120}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       backoffice:
         condition: service_started
       product-mcp:
         condition: service_started
-      ollama-warmup:
-        condition: service_completed_successfully
     ports:
       - "${AI_SERVICE_PORT:-8001}:8001"
     restart: unless-stopped
-
-  ollama:
-    image: ollama/ollama:latest
-    environment:
-      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-30m}
-      OLLAMA_CONTEXT_LENGTH: ${OLLAMA_CONTEXT_LENGTH:-512}
-    volumes:
-      - ollama_data:/root/.ollama
-    ports:
-      - "${OLLAMA_PORT:-11434}:11434"
-    healthcheck:
-      test: ["CMD", "ollama", "list"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-    restart: unless-stopped
-
-  ollama-model:
-    image: ollama/ollama:latest
-    environment:
-      OLLAMA_HOST: http://ollama:11434
-    command: ["pull", "${MODEL_NAME:-gemma3:1b}"]
-    depends_on:
-      ollama:
-        condition: service_healthy
-    restart: "no"
-
-  ollama-warmup:
-    image: ollama/ollama:latest
-    environment:
-      OLLAMA_HOST: http://ollama:11434
-    command:
-      [
-        "run",
-        "${MODEL_NAME:-gemma3:1b}",
-        "Réponds uniquement avec le mot OK.",
-      ]
-    depends_on:
-      ollama-model:
-        condition: service_completed_successfully
-    restart: "no"
 
   product-mcp:
     build: ./product_mcp_server
@@ -141,5 +100,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  ollama_data:
   postgres_data:

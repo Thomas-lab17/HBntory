@@ -36,7 +36,7 @@ flowchart LR
     User["Utilisateur"] --> Web["Client Web<br/>localhost:8080"]
     Web --> AI["AI Service<br/>localhost:8001"]
 
-    AI --> Ollama["Ollama<br/>gemma3:1b<br/>localhost:11434"]
+    AI --> Ollama["Ollama sur l'hôte<br/>gemma3:1b<br/>localhost:11434"]
     AI --> Auth["Backoffice /auth/me<br/>identité et permissions"]
     AI --> StockAPI["API interne Backoffice<br/>stocks et agences"]
     AI --> MCP["Product MCP<br/>localhost:8002"]
@@ -180,30 +180,30 @@ le JSON du navigateur.
 Une demande telle que « donne accès à Alice » ne modifie rien. Même pour un
 administrateur, le chatbot renvoie vers l'écran Utilisateurs du backoffice.
 
-## 7. Configuration Ollama dans Docker
+## 7. Configuration Ollama sur la machine hôte
 
-Ollama est intégré au `docker-compose.yml` avec trois services :
-
-- `ollama` expose le serveur d'inférence et conserve les modèles dans le
-  volume `ollama_data` ;
-- `ollama-model` télécharge `gemma3:1b` au premier démarrage puis se termine.
-- `ollama-warmup` charge le modèle en mémoire avec une inférence minimale
-  avant le démarrage de l'AI Service.
-
-L'AI Service attend que le téléchargement et le préchauffage soient terminés
-avant de démarrer.
+Ollama n'est pas exécuté dans Docker. Le conteneur `ai-service` se connecte au
+serveur Ollama installé sur l'ordinateur via `host.docker.internal`.
 
 Variables actives :
 
 ```env
 AI_LLM_ENABLED=true
-OLLAMA_API_BASE=http://ollama:11434
+OLLAMA_API_BASE=http://host.docker.internal:11434
 MODEL_NAME=gemma3:1b
-OLLAMA_PORT=11434
 OLLAMA_TIMEOUT_SECONDS=120
-OLLAMA_KEEP_ALIVE=30m
-OLLAMA_CONTEXT_LENGTH=512
 ```
+
+Sur l'hôte, installe et démarre le modèle :
+
+```bash
+ollama pull gemma3:1b
+ollama serve
+```
+
+Si nécessaire, utilise `OLLAMA_HOST=0.0.0.0:11434 ollama serve` pour rendre le
+port joignable depuis Docker Desktop. Docker ne télécharge ni ne conserve le
+modèle.
 
 Le modèle `gemma3:1b` représente environ 815 Mo. Il a été choisi comme
 compromis entre :
@@ -213,11 +213,9 @@ compromis entre :
 - la capacité à produire le petit objet JSON attendu par `QueryAgent`.
 
 Le timeout d'interprétation est fixé à 120 secondes pour accepter l'inférence
-CPU limitée de Docker Desktop. Ollama garde le modèle chargé pendant 30
-minutes et limite le contexte à 512 tokens afin d'éviter de payer le coût du
-chargement à chaque question et de réduire l'empreinte. Si Ollama ne répond
-pas dans le délai ou renvoie un JSON invalide, le service continue avec le
-plan déterministe.
+CPU de la machine hôte. Les réglages de conservation en mémoire et de contexte
+restent ceux du serveur Ollama local. Si Ollama ne répond pas dans le délai ou
+renvoie un JSON invalide, le service continue avec le plan déterministe.
 
 ## 8. API de conversation
 
@@ -348,7 +346,7 @@ Puis ouvrir `http://localhost:8080` et poser :
 
 La chaîne est considérée opérationnelle lorsque :
 
-- `ollama-model` et `ollama-warmup` se sont terminés avec le code `0` ;
+- le serveur Ollama de l'hôte répond à `/api/tags` et contient `gemma3:1b` ;
 - `/health` annonce `llm_enabled: true` et `llm_model: gemma3:1b` ;
 - le catalogue renvoie toutes les pages du fournisseur ;
 - une question produit/stock renvoie des sources réelles ;

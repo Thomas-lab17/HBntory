@@ -63,25 +63,29 @@ jamais directement à l'utilisateur et n'accède ni au stock ni aux permissions.
 
 ```env
 AI_LLM_ENABLED=true
-OLLAMA_API_BASE=http://ollama:11434
+OLLAMA_API_BASE=http://host.docker.internal:11434
 MODEL_NAME=gemma3:1b
 OLLAMA_TIMEOUT_SECONDS=120
-OLLAMA_KEEP_ALIVE=30m
-OLLAMA_CONTEXT_LENGTH=512
 ```
 
-Le `docker-compose.yml` démarre Ollama, conserve ses modèles dans le volume
-`ollama_data` et télécharge automatiquement `gemma3:1b` au premier démarrage.
-Ce modèle d'environ 815 Mo offre un meilleur compromis que la variante 270M
-pour comprendre les formulations françaises tout en restant exploitable sur
-une machine de développement. Il suffit de remplacer `MODEL_NAME` dans `.env`
-pour évaluer un autre modèle.
+Ollama est installé et lancé sur la machine hôte. Le conteneur AI le rejoint
+via `host.docker.internal`; aucun serveur Ollama, modèle ou volume Ollama
+n'est créé par Docker. Télécharge le modèle une seule fois sur l'hôte :
 
-Après le téléchargement, `ollama-warmup` exécute une inférence minimale avant
-de démarrer l'AI Service. Le modèle reste chargé pendant 30 minutes et le
-client accepte jusqu'à 120 secondes pour une interprétation sur CPU. Le
-contexte est limité à 512 tokens, ce qui suffit au planificateur structuré et
-réduit son empreinte.
+```bash
+ollama pull gemma3:1b
+ollama serve
+```
+
+Si le serveur hôte n'écoute pas sur l'interface accessible à Docker, lance-le
+avec `OLLAMA_HOST=0.0.0.0:11434 ollama serve`. Le modèle d'environ 815 Mo offre
+un meilleur compromis que la variante 270M pour comprendre les formulations
+françaises. Il suffit de remplacer `MODEL_NAME` dans `.env` et de télécharger
+le même modèle sur l'hôte.
+
+Le client accepte jusqu'à 120 secondes pour une interprétation sur CPU. La
+conservation en mémoire (`OLLAMA_KEEP_ALIVE`) et la taille de contexte sont
+des réglages du serveur Ollama hôte, pas de Docker.
 
 En cas d'indisponibilité ou de réponse JSON invalide d'Ollama, le workflow
 continue automatiquement avec le routeur déterministe.
