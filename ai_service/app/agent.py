@@ -1,14 +1,7 @@
 """
 Agent (orchestrateur de la Couche 3)
 =====================================
-Relie les trois sous-composants :
-    1. IntentRouter    -> classifie la question
-    2. ToolCaller       -> appelle les outils MCP si nécessaire
-    3. ResponseBuilder  -> construit la réponse finale
-
-Règle clé : si l'intention est HORS_SCOPE, on répond immédiatement,
-SANS appeler le moindre outil (économie de latence et de coût, et on
-évite d'exposer des outils à des questions qui ne les concernent pas).
+Relie IntentRouter, ToolCaller et ResponseBuilder.
 """
 
 from __future__ import annotations
@@ -18,6 +11,7 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
+from .http_data_client import HttpDataClient
 from .intent_router import Intent, IntentRouter
 from .mcp_client import MCPClient, MockMCPClient
 from .response_builder import ResponseBuilder
@@ -34,46 +28,39 @@ class AgentAnswer:
     tool_result: Optional[ToolCallResult] = None
 
 
-# Liste de branches connues, utilisée par l'extracteur d'entités naïf.
-# À remplacer en production par une vraie extraction d'entités (NER / LLM).
-_BRANCHES_CONNUES = ["lyon", "paris"]
-
-_PRODUITS_CONNUS = ["chaise ergonomique", "bureau assis-debout"]
-
-
 class Agent:
     """Orchestrateur de la Couche 3 — Agent IA."""
 
     def __init__(self, mcp_client: Optional[MCPClient] = None):
+        self._data_client = mcp_client or HttpDataClient()
         self.intent_router = IntentRouter()
-        self.tool_caller = ToolCaller(mcp_client or MockMCPClient())
+        self.tool_caller = ToolCaller(self._data_client)
         self.response_builder = ResponseBuilder()
 
     def repondre(self, question: str) -> AgentAnswer:
-        # 1) Intent router
         intent_result = self.intent_router.classify(question)
         logger.info(
             "Intention détectée : %s (confiance=%.2f, mots-clés=%s)",
-            intent_result.intent, intent_result.confidence, intent_result.matched_keywords,
+            intent_result.intent,
+            intent_result.confidence,
+            intent_result.matched_keywords,
         )
 
         if intent_result.intent == Intent.HORS_SCOPE:
-            # Court-circuit : aucune donnée outil à consulter, on répond directement.
             reponse = (
                 "Cette question sort du périmètre que je peux traiter "
                 "(produits, stock, agences). Pouvez-vous reformuler votre "
                 "demande en lien avec l'un de ces sujets ?"
             )
-            return AgentAnswer(question=question, intent=intent_result.intent, reponse=reponse)
+            return AgentAnswer(
+                question=question, intent=intent_result.intent, reponse=reponse
+            )
 
-        # 2) Extraction d'entités (naïve, à adapter/renforcer selon les besoins réels)
         entites = self._extraire_entites(question)
-
-        # 3) Tool caller
         tool_result = self.tool_caller.call_for_intent(intent_result.intent, entites)
-
-        # 4) Response builder
-        reponse = self.response_builder.build(intent_result.intent, entites, tool_result)
+        reponse = self.response_builder.build(
+            intent_result.intent, entites, tool_result
+        )
 
         return AgentAnswer(
             question=question,
@@ -82,21 +69,88 @@ class Agent:
             tool_result=tool_result,
         )
 
-    # -- Extraction d'entités très simple, basée sur des listes connues --
-    # NB : en production, remplacer par du NER ou un appel LLM structuré.
-
     def _extraire_entites(self, question: str) -> dict:
         q = question.lower()
         entites: dict = {}
 
-        for produit in _PRODUITS_CONNUS:
-            if produit in q:
-                entites["produit"] = produit
-                break
+        produit = self._match_produit(q, question)
+        if produit:
+            entites["produit"] = produit
 
-        for branche in _BRANCHES_CONNUES:
-            if re.search(rf"\b{re.escape(branche)}\b", q):
-                entites["branche"] = branche.capitalize()
-                break
+        branche = self._match_branche(q)
+        if branche:
+            entites["branche"] = branche
 
         return entites
+
+    def _match_branche(self, question_lower: str) -> Optional[str]:
+        branches: list[str] = []
+        client = self._data_client
+        if isinstance(client, HttpDataClient):
+            try:
+                branches = [
+                    str(b.get("name"))
+                    for b in client.list_branches()
+                    if b.get("name")
+                ]
+            except Exception:  # noqa: BLE001
+                branches = []
+        if not branches:
+            branches = ["Lyon", "Paris"]
+
+        for name in sorted(branches, key=len, reverse=True):
+            if re.search(rf"\b{re.escape(name.lower())}\b", question_lower):
+                return name
+        return None
+
+    def _match_produit(self, question_lower: str, question_raw: str) -> Optional[str]:
+        products: list[dict] = []
+        client = self._data_client
+        if isinstance(client, HttpDataClient):
+            try:
+                products = client.list_products()
+            except Exception:  # noqa: BLE001
+                products = []
+        elif isinstance(client, MockMCPClient):
+            products = [
+                {"name": name, "id": data.get("reference"), "sku": data.get("reference")}
+                for name, data in MockMCPClient._PRODUITS.items()
+            ]
+
+        # 1) Longest catalog name contained in the question
+        best_name: Optional[str] = None
+        best_len = 0
+        for product in products:
+            name = str(product.get("name") or "").strip()
+            if not name:
+                continue
+            name_l = name.lower()
+            if name_l in question_lower and len(name_l) > best_len:
+                best_name = name
+                best_len = len(name_l)
+        if best_name:
+            return best_name
+
+        # 2) Explicit SKU (e.g. HB-LAP-1001)
+        for product in products:
+            sku = str(product.get("sku") or "").strip()
+            if sku and re.search(rf"\b{re.escape(sku)}\b", question_raw, flags=re.I):
+                return sku
+
+        # 3) "produit 1" / "id 1" / bare known numeric id
+        id_match = re.search(
+            r"\b(?:produit|product|id|référence|reference)\s*[#:]?\s*(\d+)\b",
+            question_lower,
+        )
+        if id_match:
+            return id_match.group(1)
+
+        known_ids = {str(p.get("id")) for p in products if p.get("id") is not None}
+        for token in re.findall(r"\b\d+\b", question_raw):
+            if token in known_ids:
+                return token
+
+        for legacy in ("chaise ergonomique", "bureau assis-debout"):
+            if legacy in question_lower:
+                return legacy
+        return None

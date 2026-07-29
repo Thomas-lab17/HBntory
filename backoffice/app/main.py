@@ -11,7 +11,7 @@ from sqlalchemy import select
 from app.auth import create_auth_router, hash_password
 from app.database import Base, SessionLocal, engine
 from app.models import Branch, Stock, User, UserRole
-from app.routers import products, stock, users
+from app.routers import internal, products, stock, users
 
 
 def find_by_username(username: str) -> Optional[User]:
@@ -63,20 +63,28 @@ def seed_demo_data() -> None:
                 )
             )
 
-        stock_exists = db.scalar(
-            select(Stock).where(
-                Stock.branch_id == paris.id,
-                Stock.external_product_id == "123",
-            )
-        )
-        if stock_exists is None:
-            db.add(
-                Stock(
-                    branch=paris,
-                    external_product_id="123",
-                    quantity=10,
+        demo_stocks = [
+            (paris, "1", 10),
+            (paris, "3", 5),
+            (lyon, "1", 7),
+            (lyon, "2", 3),
+            (paris, "123", 10),
+        ]
+        for branch_row, product_id, qty in demo_stocks:
+            exists = db.scalar(
+                select(Stock).where(
+                    Stock.branch_id == branch_row.id,
+                    Stock.external_product_id == product_id,
                 )
             )
+            if exists is None:
+                db.add(
+                    Stock(
+                        branch=branch_row,
+                        external_product_id=product_id,
+                        quantity=qty,
+                    )
+                )
         db.commit()
 
 
@@ -92,6 +100,7 @@ app.include_router(
 app.include_router(products.router)
 app.include_router(stock.router)
 app.include_router(users.router)
+app.include_router(internal.router)
 
 
 @app.on_event("startup")

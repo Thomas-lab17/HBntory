@@ -1,230 +1,301 @@
-// Gestion des utilisateurs - page admin
 document.addEventListener('DOMContentLoaded', async () => {
-  const userInfo = document.getElementById('user-info');
-  const errorDiv = document.getElementById('error-message');
-  const successDiv = document.getElementById('success-message');
-  const logoutBtn = document.getElementById('logout-btn');
-  const tableBody = document.getElementById('users-table-body');
-  const createForm = document.getElementById('create-user-form');
+  const elements = {
+    userName: document.getElementById('user-name'),
+    userInitials: document.getElementById('user-initials'),
+    logout: document.getElementById('logout-btn'),
+    error: document.getElementById('error-message'),
+    success: document.getElementById('success-message'),
+    count: document.getElementById('users-count'),
+    search: document.getElementById('users-search'),
+    tableBody: document.getElementById('users-table-body'),
+    createDialog: document.getElementById('create-user-dialog'),
+    openCreate: document.getElementById('open-create-modal'),
+    closeCreate: document.getElementById('close-create-modal'),
+    cancelCreate: document.getElementById('cancel-create-modal'),
+    createForm: document.getElementById('create-user-form'),
+    actionDialog: document.getElementById('user-action-dialog'),
+    actionForm: document.getElementById('user-action-form'),
+    actionTitle: document.getElementById('user-action-title'),
+    actionEyebrow: document.getElementById('user-action-eyebrow'),
+    actionUserId: document.getElementById('action-user-id'),
+    actionMode: document.getElementById('action-user-mode'),
+    passwordField: document.getElementById('password-action-field'),
+    branchField: document.getElementById('branch-action-field'),
+    actionPassword: document.getElementById('action-password'),
+    actionBranch: document.getElementById('action-branch-id'),
+    submitAction: document.getElementById('submit-user-action'),
+    closeAction: document.getElementById('close-user-action-modal'),
+    cancelAction: document.getElementById('cancel-user-action-modal'),
+  };
 
-  // Attach event delegation immediately (more reliable)
-  tableBody.addEventListener('click', handleTableClick);
+  const state = { users: [] };
 
-  // Vérifie l'authentification et le rôle admin
-  try {
-    const res = await fetch('/auth/me', { credentials: 'include' });
-    if (!res.ok) {
-      window.location.href = 'index.html';
-      return;
-    }
-    const user = await res.json();
-    if (user.role !== 'admin') {
-      window.location.href = 'index.html';
-      return;
-    }
-    userInfo.textContent = `Connecté en tant que ${user.username} (Admin)`;
-  } catch (e) {
-    window.location.href = 'index.html';
-    return;
+  function initials(value) {
+    return value.trim().slice(0, 2).toUpperCase() || '—';
   }
 
-  // Logout
-  if (logoutBtn) {
-    logoutBtn.addEventListener('click', async () => {
-      await fetch('/auth/logout', { method: 'POST', credentials: 'include' });
-      window.location.href = 'index.html';
+  function hideMessages() {
+    elements.error.hidden = true;
+    elements.success.hidden = true;
+  }
+
+  function showMessage(element, message) {
+    element.textContent = message;
+    element.hidden = false;
+  }
+
+  async function responseError(response, fallback) {
+    const data = await response.json().catch(() => ({}));
+    return new Error(data.detail || fallback);
+  }
+
+  function createCell(content, className = '') {
+    const cell = document.createElement('td');
+    if (className) cell.className = className;
+    if (content instanceof Node) cell.appendChild(content);
+    else cell.textContent = content ?? '';
+    return cell;
+  }
+
+  function visibleUsers() {
+    const query = elements.search.value.trim().toLocaleLowerCase('fr');
+    if (!query) return state.users;
+    return state.users.filter((user) => {
+      return [user.username, user.role, user.branch_id]
+        .filter((value) => value !== null && value !== undefined)
+        .join(' ')
+        .toLocaleLowerCase('fr')
+        .includes(query);
     });
   }
 
-  // Gestion des clics sur les boutons d'action (event delegation)
-  async function handleTableClick(e) {
-    const btn = e.target.closest('button');
-    if (!btn) return;
-
-    const id = btn.getAttribute('data-id');
-    const td = btn.parentElement;
-
-    errorDiv.style.display = 'none';
-    successDiv.style.display = 'none';
-
-    // Disable all action buttons in this row during request
-    td.querySelectorAll('button').forEach(b => b.disabled = true);
-
-    try {
-      if (btn.classList.contains('btn-delete')) {
-        if (!confirm('Supprimer cet utilisateur ?')) {
-          td.querySelectorAll('button').forEach(b => b.disabled = false);
-          return;
-        }
-
-        const res = await fetch(`/users/${id}`, {
-          method: 'DELETE',
-          credentials: 'include'
-        });
-        if (res.ok) {
-          successDiv.textContent = 'Utilisateur supprimé';
-          successDiv.style.display = 'block';
-          await loadUsers();
-        } else {
-          errorDiv.textContent = 'Erreur lors de la suppression';
-          errorDiv.style.display = 'block';
-          td.querySelectorAll('button').forEach(b => b.disabled = false);
-        }
-      }
-
-      if (btn.classList.contains('btn-change-pwd')) {
-        const newPassword = prompt('Nouveau mot de passe :');
-        if (!newPassword) {
-          td.querySelectorAll('button').forEach(b => b.disabled = false);
-          return;
-        }
-
-        const res = await fetch(`/users/${id}/password`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ new_password: newPassword })
-        });
-        if (res.ok) {
-          successDiv.textContent = 'Mot de passe modifié';
-          successDiv.style.display = 'block';
-        } else {
-          errorDiv.textContent = 'Erreur lors du changement de mot de passe';
-          errorDiv.style.display = 'block';
-        }
-        td.querySelectorAll('button').forEach(b => b.disabled = false);
-      }
-
-      if (btn.classList.contains('btn-change-branch')) {
-        // Affiche un select inline pour changer d'agence
-        const currentBranch = td.parentElement.children[1].textContent.trim();
-        const originalHTML = td.innerHTML;
-
-        td.innerHTML = `
-          <select class="branch-select">
-            <option value="1" ${currentBranch === '1' ? 'selected' : ''}>Paris</option>
-            <option value="2" ${currentBranch === '2' ? 'selected' : ''}>Lyon</option>
-          </select>
-          <button class="btn-small">Valider</button>
-          <button class="btn-small">Annuler</button>
-        `;
-
-        const select = td.querySelector('.branch-select');
-        const buttons = td.querySelectorAll('.btn-small');
-        const validateBtn = buttons[0];
-        const cancelBtn = buttons[1];
-
-        if (!validateBtn || !cancelBtn) {
-          errorDiv.textContent = 'Erreur interne';
-          errorDiv.style.display = 'block';
-          return;
-        }
-
-        validateBtn.addEventListener('click', async () => {
-          const newBranch = parseInt(select.value, 10);
-          validateBtn.disabled = true;
-          cancelBtn.disabled = true;
-
-          try {
-            const res = await fetch(`/users/${id}/branch`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              credentials: 'include',
-              body: JSON.stringify({ branch_id: newBranch })
-            });
-
-            if (res.ok) {
-              successDiv.textContent = 'Agence modifiée';
-              successDiv.style.display = 'block';
-              await loadUsers();
-            } else {
-              errorDiv.textContent = 'Erreur lors du changement d\'agence';
-              errorDiv.style.display = 'block';
-              td.innerHTML = originalHTML;
-            }
-          } catch (err) {
-            errorDiv.textContent = 'Erreur réseau';
-            errorDiv.style.display = 'block';
-            td.innerHTML = originalHTML;
-          }
-        });
-
-        cancelBtn.addEventListener('click', () => {
-          td.innerHTML = originalHTML;
-        });
-      }
-    } catch (err) {
-      errorDiv.textContent = 'Erreur réseau';
-      errorDiv.style.display = 'block';
-      td.querySelectorAll('button').forEach(b => b.disabled = false);
-    }
+  function actionButton(label, action, id, style = 'secondary') {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `btn btn-${style} btn-small btn-auto`;
+    button.dataset.userAction = action;
+    button.dataset.userId = id;
+    button.textContent = label;
+    return button;
   }
 
-  // Charge la liste des utilisateurs communs
+  function renderUsers() {
+    const users = visibleUsers();
+    elements.tableBody.replaceChildren();
+    elements.count.textContent = `${state.users.length} utilisateur${state.users.length > 1 ? 's' : ''}`;
+
+    if (users.length === 0) {
+      const row = document.createElement('tr');
+      const cell = createCell(
+        state.users.length === 0 ? 'Aucun utilisateur commun.' : 'Aucun résultat.',
+        'empty-state'
+      );
+      cell.colSpan = 4;
+      row.appendChild(cell);
+      elements.tableBody.appendChild(row);
+      return;
+    }
+
+    users.forEach((user) => {
+      const row = document.createElement('tr');
+
+      const userCell = document.createElement('div');
+      userCell.className = 'user-cell';
+      const avatar = document.createElement('span');
+      avatar.className = 'avatar';
+      avatar.textContent = initials(user.username);
+      const identity = document.createElement('div');
+      identity.className = 'cell-stack';
+      const username = document.createElement('strong');
+      username.textContent = user.username;
+      identity.appendChild(username);
+      userCell.append(avatar, identity);
+      row.appendChild(createCell(userCell));
+
+      const role = document.createElement('span');
+      role.className = 'badge badge-primary';
+      role.textContent = user.role;
+      row.appendChild(createCell(role));
+      row.appendChild(createCell(user.branch_id ? `#${user.branch_id}` : '—'));
+
+      const actions = document.createElement('div');
+      actions.className = 'table-actions';
+      actions.append(
+        actionButton('Mot de passe', 'password', user.id),
+        actionButton('Agence', 'branch', user.id),
+        actionButton('Supprimer', 'delete', user.id, 'danger')
+      );
+      row.appendChild(createCell(actions, 'align-right'));
+
+      elements.tableBody.appendChild(row);
+    });
+  }
+
   async function loadUsers() {
     try {
-      const res = await fetch('/users/', { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to load users');
-      const users = await res.json();
-      tableBody.innerHTML = '';
-
-      if (users.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="3">Aucun utilisateur commun.</td></tr>';
-        return;
-      }
-
-      users.forEach(u => {
-        const row = document.createElement('tr');
-        row.innerHTML = `
-          <td>${u.username}</td>
-          <td>${u.branch_id || '-'}</td>
-          <td>
-            <button data-id="${u.id}" class="btn-change-pwd">Changer mot de passe</button>
-            <button data-id="${u.id}" class="btn-change-branch">Changer agence</button>
-            <button data-id="${u.id}" class="btn-delete">Supprimer</button>
-          </td>
-        `;
-        tableBody.appendChild(row);
-      });
-    } catch (e) {
-      errorDiv.textContent = 'Erreur lors du chargement des utilisateurs';
-      errorDiv.style.display = 'block';
+      const response = await fetch('/users/', { credentials: 'include' });
+      if (!response.ok) throw await responseError(response, 'Impossible de charger les utilisateurs.');
+      state.users = await response.json();
+      renderUsers();
+    } catch (error) {
+      showMessage(elements.error, error.message);
+      state.users = [];
+      renderUsers();
     }
   }
 
-  await loadUsers();
+  function openActionDialog(mode, userId) {
+    const user = state.users.find((item) => String(item.id) === String(userId));
+    if (!user) return;
 
-  // Formulaire de création d'utilisateur
-  if (createForm) {
-    createForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      errorDiv.style.display = 'none';
-      successDiv.style.display = 'none';
+    hideMessages();
+    elements.actionForm.reset();
+    elements.actionMode.value = mode;
+    elements.actionUserId.value = userId;
+    elements.actionEyebrow.textContent = user.username;
+    elements.passwordField.hidden = mode !== 'password';
+    elements.branchField.hidden = mode !== 'branch';
+    elements.actionPassword.required = mode === 'password';
+    elements.actionBranch.required = mode === 'branch';
 
-      const username = document.getElementById('new-username').value.trim();
-      const password = document.getElementById('new-password').value;
-      const branchId = parseInt(document.getElementById('new-branch-id').value, 10);
+    if (mode === 'password') {
+      elements.actionTitle.textContent = 'Changer le mot de passe';
+      elements.submitAction.textContent = 'Mettre à jour';
+    } else {
+      elements.actionTitle.textContent = 'Changer l’agence';
+      elements.submitAction.textContent = 'Mettre à jour';
+      elements.actionBranch.value = user.branch_id || '';
+    }
 
-      try {
-        const res = await fetch('/users/', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            username,
-            password,
-            branch_id: branchId
-          })
-        });
-        if (!res.ok) throw new Error(await res.text());
-        successDiv.textContent = 'Utilisateur créé avec succès';
-        successDiv.style.display = 'block';
-        createForm.reset();
-        await loadUsers();
-      } catch (err) {
-        errorDiv.textContent = 'Erreur lors de la création';
-        errorDiv.style.display = 'block';
-      }
-    });
+    elements.actionDialog.showModal();
+  }
+
+  async function deleteUser(userId) {
+    const user = state.users.find((item) => String(item.id) === String(userId));
+    if (!user || !window.confirm(`Supprimer l’utilisateur « ${user.username} » ?`)) return;
+
+    hideMessages();
+    try {
+      const response = await fetch(`/users/${userId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!response.ok) throw await responseError(response, 'Erreur lors de la suppression.');
+      await loadUsers();
+      showMessage(elements.success, 'Utilisateur supprimé.');
+    } catch (error) {
+      showMessage(elements.error, error.message);
+    }
+  }
+
+  elements.search.addEventListener('input', renderUsers);
+  elements.openCreate.addEventListener('click', () => {
+    hideMessages();
+    elements.createForm.reset();
+    elements.createDialog.showModal();
+  });
+  elements.closeCreate.addEventListener('click', () => elements.createDialog.close());
+  elements.cancelCreate.addEventListener('click', () => elements.createDialog.close());
+  elements.closeAction.addEventListener('click', () => elements.actionDialog.close());
+  elements.cancelAction.addEventListener('click', () => elements.actionDialog.close());
+
+  elements.tableBody.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-user-action]');
+    if (!button) return;
+    if (button.dataset.userAction === 'delete') {
+      deleteUser(button.dataset.userId);
+    } else {
+      openActionDialog(button.dataset.userAction, button.dataset.userId);
+    }
+  });
+
+  elements.createForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    hideMessages();
+
+    const submit = elements.createForm.querySelector('button[type="submit"]');
+    submit.disabled = true;
+    try {
+      const response = await fetch('/users/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          username: document.getElementById('new-username').value.trim(),
+          password: document.getElementById('new-password').value,
+          branch_id: Number.parseInt(document.getElementById('new-branch-id').value, 10),
+        }),
+      });
+      if (!response.ok) throw await responseError(response, 'Erreur lors de la création.');
+
+      elements.createDialog.close();
+      await loadUsers();
+      showMessage(elements.success, 'Utilisateur créé avec succès.');
+    } catch (error) {
+      elements.createDialog.close();
+      showMessage(elements.error, error.message);
+    } finally {
+      submit.disabled = false;
+    }
+  });
+
+  elements.actionForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    hideMessages();
+
+    const mode = elements.actionMode.value;
+    const userId = elements.actionUserId.value;
+    const endpoint = mode === 'password' ? 'password' : 'branch';
+    const payload = mode === 'password'
+      ? { new_password: elements.actionPassword.value }
+      : { branch_id: Number.parseInt(elements.actionBranch.value, 10) };
+
+    elements.submitAction.disabled = true;
+    try {
+      const response = await fetch(`/users/${userId}/${endpoint}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) throw await responseError(response, 'Erreur lors de la modification.');
+
+      elements.actionDialog.close();
+      await loadUsers();
+      showMessage(
+        elements.success,
+        mode === 'password' ? 'Mot de passe modifié.' : 'Agence modifiée.'
+      );
+    } catch (error) {
+      elements.actionDialog.close();
+      showMessage(elements.error, error.message);
+    } finally {
+      elements.submitAction.disabled = false;
+    }
+  });
+
+  elements.logout.addEventListener('click', async () => {
+    await fetch('/auth/logout', { method: 'POST', credentials: 'include' });
+    window.location.href = '/';
+  });
+
+  try {
+    const response = await fetch('/auth/me', { credentials: 'include' });
+    if (!response.ok) {
+      window.location.href = '/';
+      return;
+    }
+
+    const user = await response.json();
+    if (user.role !== 'admin') {
+      window.location.href = '/stock.html';
+      return;
+    }
+
+    elements.userName.textContent = user.username;
+    elements.userInitials.textContent = initials(user.username);
+    await loadUsers();
+  } catch {
+    window.location.href = '/';
   }
 });

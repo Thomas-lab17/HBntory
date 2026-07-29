@@ -45,12 +45,25 @@ Variables d'environnement :
 - `JWT_SECRET_KEY` : secret utilisé pour signer le JWT ;
 - `JWT_EXPIRE_MINUTES` : durée du JWT, 30 minutes par défaut ;
 - `APP_ENV` : mettre `production` pour activer le cookie `Secure`.
+- `PRODUCT_API_URL` : URL de base du catalogue produit externe
+  (`http://external-products-api:5000` dans Docker Compose).
 
 `app/main.py` connecte le module JWT au modèle SQLAlchemy `User` avec deux
 fonctions de recherche : par nom et par identifiant.
 
-L'interface Backoffice est disponible sur `/`. Après connexion, `/app.html`
-vérifie la session avec `/auth/me` et adapte le contenu au rôle.
+L'interface Backoffice est disponible sur `/`. Après connexion, un admin est
+dirigé vers `/users.html` et un utilisateur `common` vers `/stock.html`.
+Le rôle `common` peut :
+
+- consulter uniquement le stock de son agence avec `GET /stock/` ;
+- consulter le catalogue externe avec `GET /products/` ;
+- ajouter un produit connu avec `POST /stock/add` ;
+- retirer une quantité disponible avec `POST /stock/remove`.
+
+Les noms, SKU et prix sont lus depuis Product API et ne sont jamais enregistrés
+dans PostgreSQL. Seuls l'identifiant externe et la quantité par agence sont
+persistés. Un produit inconnu est refusé et une indisponibilité de Product API
+ne modifie jamais le stock.
 
 En dehors de Docker :
 

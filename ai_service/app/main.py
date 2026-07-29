@@ -1,35 +1,41 @@
-"""
-Démonstration de la Couche 3 — Agent IA.
-Lancer avec : python -m agent_ia.main
-"""
+"""AI Query Service — HTTP API for the public client."""
+
+from __future__ import annotations
 
 import logging
 
-from agent_ia import Agent
+from fastapi import FastAPI
+from pydantic import BaseModel, Field
+
+from app.agent import Agent
+from app.http_data_client import HttpDataClient
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-
-QUESTIONS_TEST = [
-    "Quel est le prix de la chaise ergonomique ?",
-    "Est-ce que la chaise ergonomique est disponible à Lyon ?",
-    "Est-ce que la chaise ergonomique est disponible à Paris ?",
-    "Est-ce que le bureau assis-debout est disponible à Paris ?",
-    "Quels sont les horaires de l'agence de Lyon ?",
-    "Quelle est la capitale de la France ?",  # hors scope
-]
+app = FastAPI(title="HBntory AI Query Service", version="0.2.0")
+_agent = Agent(HttpDataClient())
 
 
-def main() -> None:
-    agent = Agent()
-
-    for question in QUESTIONS_TEST:
-        print("\n" + "=" * 70)
-        print(f"Question : {question}")
-        reponse = agent.repondre(question)
-        print(f"Intention : {reponse.intent.value}")
-        print(f"Réponse   : {reponse.reponse}")
+class AskRequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=2000)
 
 
-if __name__ == "__main__":
-    main()
+class AskResponse(BaseModel):
+    answer: str
+    intent: str
+    question: str
+
+
+@app.get("/health", tags=["system"])
+def health() -> dict[str, str]:
+    return {"status": "ok", "service": "ai-service"}
+
+
+@app.post("/ask", response_model=AskResponse, tags=["chat"])
+def ask(body: AskRequest) -> AskResponse:
+    result = _agent.repondre(body.question.strip())
+    return AskResponse(
+        answer=result.reponse,
+        intent=result.intent.value,
+        question=result.question,
+    )
