@@ -1,9 +1,11 @@
 """Routes sécurisées donnant accès au catalogue produit externe."""
 
-from typing import Any
+from __future__ import annotations
+
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.dependencies import get_current_common
 from app.product_api import (
@@ -21,9 +23,17 @@ class ProductResponse(BaseModel):
     id: str
     sku: str
     name: str
-    category: str | None = None
-    unit_price: float | None = None
-    currency: str | None = None
+    category: Optional[str] = None
+    description: Optional[str] = None
+    brand: Optional[str] = None
+    supplier_id: Optional[str] = None
+    supplier_name: Optional[str] = None
+    unit_price: Optional[float] = None
+    currency: Optional[str] = None
+    discontinued: Optional[bool] = None
+    weight_kg: Optional[float] = None
+    tags: list[str] = Field(default_factory=list)
+    updated_at: Optional[str] = None
 
 
 def _response(product: dict[str, Any]) -> ProductResponse:
@@ -32,8 +42,16 @@ def _response(product: dict[str, Any]) -> ProductResponse:
         sku=str(product.get("sku", product["id"])),
         name=product["name"],
         category=product.get("category"),
+        description=product.get("description"),
+        brand=product.get("brand"),
+        supplier_id=product.get("supplier_id"),
+        supplier_name=product.get("supplier_name"),
         unit_price=product.get("unit_price"),
         currency=product.get("currency"),
+        discontinued=product.get("discontinued"),
+        weight_kg=product.get("weight_kg"),
+        tags=product.get("tags") if isinstance(product.get("tags"), list) else [],
+        updated_at=product.get("updated_at"),
     )
 
 

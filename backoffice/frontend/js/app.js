@@ -19,7 +19,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       description.textContent = 'L’administrateur gère les comptes du Backoffice.';
     } else {
       title.textContent = 'Stock de votre agence';
-      description.textContent = `Agence n°${user.branch_id}`;
+      description.textContent = user.branch_name || `Agence n°${user.branch_id}`;
     }
   } catch {
     window.location.href = '/';

@@ -92,11 +92,14 @@ def create_auth_router(
 
     def public_user(user: Any) -> Dict[str, Any]:
         """Retourne les informations publiques d'un utilisateur."""
+        branch_id = getattr(user, "branch_id", None)
+        branch = getattr(user, "branch", None) if branch_id is not None else None
         return {
             "id": user.id,
             "username": user.username,
             "role": user.role,
-            "branch_id": getattr(user, "branch_id", None),
+            "branch_id": branch_id,
+            "branch_name": getattr(branch, "name", None),
         }
 
     def current_user(
