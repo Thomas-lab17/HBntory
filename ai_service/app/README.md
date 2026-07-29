@@ -5,9 +5,10 @@ données réelles :
 
 ```text
 InputGuardAgent
-  -> QueryAgent (règles rapides, Ollama optionnel si ambigu)
+  -> QueryAgent (Ollama en premier, repli déterministe)
+  -> AccessAgent (garde déterministe avant les données)
   -> EntityResolverAgent (catalogue + agences)
-  -> AccessAgent
+  -> AccessAgent (confirmation avec les entités résolues)
   -> ProductAgent / StockAgent / BranchAgent
   -> ResponseAgent
   -> GroundingAgent
@@ -51,21 +52,35 @@ InputGuardAgent
 ```
 
 La réponse conserve les champs historiques `answer`, `intent` et `question`,
-et ajoute `status`, `request_id`, `agent`, `sources`, `access` et
+et ajoute `status`, `request_id`, `agent`, `sources`, `access`, `planning` et
 `used_history`.
+
+`planning` indique si Ollama a produit le plan ou si le repli déterministe a
+été utilisé :
+
+```json
+{
+  "source": "deterministic_fallback",
+  "status": "fallback",
+  "confidence": 0.9,
+  "failure_code": "llm_unavailable"
+}
+```
 
 ## Ollama local
 
-Les questions courantes sont traitées sans modèle pour réduire la latence.
-Ollama est sollicité uniquement lorsque le routeur déterministe manque de
-confiance. Il traduit alors la question en plan JSON structuré ; il ne répond
-jamais directement à l'utilisateur et n'accède ni au stock ni aux permissions.
+Quand il est activé, Ollama reçoit chaque question validée et la traduit en
+plan JSON structuré. Il ne répond jamais directement à l'utilisateur, ne
+décide pas des autorisations et n'accède à aucun tool. Le plan est ensuite
+validé par du code déterministe. Le contrôle d'accès déterministe précède
+toute résolution de données et est confirmé avant le tool métier.
 
 ```env
 AI_LLM_ENABLED=true
 OLLAMA_API_BASE=http://host.docker.internal:11434
 MODEL_NAME=gemma3:1b
-OLLAMA_TIMEOUT_SECONDS=120
+OLLAMA_TIMEOUT_SECONDS=15
+AI_LLM_MIN_CONFIDENCE=0.65
 ```
 
 Ollama est installé et lancé sur la machine hôte. Le conteneur AI le rejoint
@@ -83,9 +98,14 @@ un meilleur compromis que la variante 270M pour comprendre les formulations
 françaises. Il suffit de remplacer `MODEL_NAME` dans `.env` et de télécharger
 le même modèle sur l'hôte.
 
-Le client accepte jusqu'à 120 secondes pour une interprétation sur CPU. La
+Le client accepte jusqu'à 15 secondes pour une interprétation. La
 conservation en mémoire (`OLLAMA_KEEP_ALIVE`) et la taille de contexte sont
 des réglages du serveur Ollama hôte, pas de Docker.
 
 En cas d'indisponibilité ou de réponse JSON invalide d'Ollama, le workflow
-continue automatiquement avec le routeur déterministe.
+continue automatiquement avec le routeur déterministe. La cause est exposée
+par `planning.failure_code` sans publier le détail technique de l'exception.
+Les codes actuels couvrent notamment `llm_disabled`, `llm_unavailable`,
+`llm_model_unavailable`, `llm_invalid_response`, `llm_low_confidence`,
+`llm_invalid_intents`, `llm_ungrounded_branch`, `llm_scope_conflict` et
+`llm_security_override`.

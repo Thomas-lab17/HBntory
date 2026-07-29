@@ -18,11 +18,12 @@ Supprimer une ligne de stock ne supprime donc jamais le produit du catalogue.
 Le produit reste disponible à la commande tant qu'il est fourni par l'API
 Product.
 
-Le chatbot utilise désormais une architecture hybride :
+Le chatbot utilise désormais une architecture hybride LLM-first :
 
-- des règles déterministes pour les cas métier connus, les autorisations et
-  les appels aux données ;
-- Ollama avec `gemma3:1b` pour interpréter les formulations ambiguës ;
+- Ollama avec `gemma3:1b` identifie chaque question validée ;
+- du code déterministe valide le plan, contrôle les autorisations et appelle
+  les données ;
+- des règles déterministes reprennent la planification si Ollama échoue ;
 - des réponses construites uniquement à partir des données réelles renvoyées
   par le Product MCP et le backoffice.
 
@@ -56,7 +57,7 @@ flowchart LR
 | Product MCP | Lecture, pagination et normalisation du catalogue | API Product |
 | Backoffice | Utilisateurs, agences et quantités locales | PostgreSQL |
 | AI Service | Compréhension, contrôle d'accès et orchestration | Aucune donnée métier persistée |
-| Ollama | Interprétation sémantique d'une question ambiguë | Aucun accès direct aux données |
+| Ollama | Interprétation sémantique de chaque question validée | Aucun accès direct aux données |
 | Client Web | Conversation et transmission de l'historique | Mémoire locale de l'interface |
 
 ## 3. Catalogue et stock : règle fonctionnelle centrale
@@ -90,15 +91,16 @@ produit dans l'ordre alphabétique lorsque les quantités sont identiques.
 ```mermaid
 flowchart TD
     Question["Question + historique"] --> Guard["InputGuardAgent"]
-    Guard --> Query["QueryAgent"]
-    Query -->|"formulation connue"| Rules["Plan déterministe"]
-    Query -->|"confiance < 0,7"| LLM["Ollama / gemma3:1b"]
-    LLM --> Plan["Plan JSON structuré"]
-    Rules --> Resolve["EntityResolverAgent"]
-    Plan --> Resolve
-    Resolve --> Access["AccessAgent"]
-    Access -->|"refusé"| Denied["Réponse de refus"]
-    Access -->|"autorisé"| Specialized["ProductAgent / StockAgent / BranchAgent"]
+    Guard --> LLM["Ollama / gemma3:1b"]
+    LLM --> Validate["Validation déterministe du plan JSON"]
+    LLM -->|"indisponible, invalide ou confiance faible"| Rules["Plan déterministe de repli"]
+    Rules --> Access1
+    Validate --> Access1["AccessAgent : garde avant données"]
+    Access1 -->|"refusé"| Denied["Réponse de refus, aucun tool appelé"]
+    Access1 -->|"autorisé"| Resolve["EntityResolverAgent"]
+    Resolve --> Access2["AccessAgent : confirmation avant tool métier"]
+    Access2 -->|"refusé"| Denied
+    Access2 -->|"autorisé"| Specialized["Tools déterministes : produit / stock / agence"]
     Specialized --> Response["ResponseAgent"]
     Response --> Grounding["GroundingAgent"]
     Grounding --> Answer["Réponse finale + sources"]
@@ -106,38 +108,41 @@ flowchart TD
 
 ### Ce qui « raisonne »
 
-Sans Ollama, `QueryAgent` applique des règles :
-
-- normalisation des accents et de la ponctuation ;
-- détection de mots-clés comme `stock`, `disponible`, `prix`, `agence` ;
-- reconnaissance d'alias comme `écran` → `monitor` et
-  `pouces` → `inch` ;
-- rapprochement des mots avec les noms, descriptions, catégories, SKU et
-  tags du catalogue ;
-- récupération du produit précédent pour une question telle que
-  « Et à Paris ? ».
-
-Avec Ollama activé, une question jugée ambiguë est envoyée à `gemma3:1b`. Le
-modèle doit seulement retourner :
+Ollama est le planificateur principal. Il doit seulement retourner :
 
 ```json
 {
   "intents": ["stock_lookup"],
   "product_query": "écran 27 pouces",
   "branch": "Lyon",
+  "stock_filter": null,
+  "list_all_products": false,
+  "used_history": false,
   "confidence": 0.91
 }
 ```
 
-Ollama ne produit pas directement la réponse finale. Il ne peut pas appeler
-les outils métier, modifier la base de données ou décider seul d'un accès.
+Le code rejette les intentions inconnues, les entités mal formées, les agences
+absentes de la question, les plans incohérents et les confiances trop faibles.
+La requête produit envoyée aux tools est reconstruite à partir des mots de
+l'utilisateur, jamais à partir d'un produit inventé par le modèle.
+
+Sans Ollama, ou si ce plan échoue, `QueryAgent` applique ses règles de repli :
+
+- normalisation des accents et de la ponctuation ;
+- détection de mots-clés métier ;
+- reconnaissance des alias produit ;
+- récupération du contexte pour « Et à Paris ? ».
+
+Ollama ne produit jamais la réponse finale. Il ne peut pas appeler les tools,
+modifier la base ou décider seul d'un accès.
 
 ### Pourquoi une architecture hybride
 
 | Besoin | Réponse architecturale |
 |---|---|
-| Comprendre plusieurs formulations naturelles | Ollama interprète les cas ambigus |
-| Répondre rapidement aux questions courantes | Routeur déterministe en premier |
+| Comprendre plusieurs formulations naturelles | Ollama interprète chaque question |
+| Continuer à répondre en cas de panne LLM | Routeur déterministe de repli |
 | Ne pas inventer une quantité ou un prix | Réponse fondée sur les API réelles |
 | Protéger les stocks des autres agences | Politique d'accès déterministe |
 | Continuer si Ollama est indisponible | Repli automatique sur les règles |
@@ -191,7 +196,8 @@ Variables actives :
 AI_LLM_ENABLED=true
 OLLAMA_API_BASE=http://host.docker.internal:11434
 MODEL_NAME=gemma3:1b
-OLLAMA_TIMEOUT_SECONDS=120
+OLLAMA_TIMEOUT_SECONDS=15
+AI_LLM_MIN_CONFIDENCE=0.65
 ```
 
 Sur l'hôte, installe et démarre le modèle :
@@ -212,8 +218,8 @@ compromis entre :
 - une meilleure compréhension du français que la variante 270M ;
 - la capacité à produire le petit objet JSON attendu par `QueryAgent`.
 
-Le timeout d'interprétation est fixé à 120 secondes pour accepter l'inférence
-CPU de la machine hôte. Les réglages de conservation en mémoire et de contexte
+Le timeout d'interprétation est fixé à 15 secondes. Les réglages de
+conservation en mémoire et de contexte
 restent ceux du serveur Ollama local. Si Ollama ne répond pas dans le délai ou
 renvoie un JSON invalide, le service continue avec le plan déterministe.
 
@@ -247,10 +253,31 @@ La réponse expose notamment :
 - `agent` : agents métier réellement utilisés ;
 - `sources` : systèmes ayant fourni les preuves ;
 - `access` : portée d'accès effective ;
+- `planning` : planificateur retenu, confiance et code de repli éventuel ;
 - `used_history` : indication de réutilisation du contexte.
 
-L'endpoint `/health` indique également si le LLM est activé et le nom du
-modèle configuré.
+Exemple de défaillance exposée sans détail sensible :
+
+```json
+{
+  "planning": {
+    "source": "deterministic_fallback",
+    "status": "fallback",
+    "confidence": 0.9,
+    "failure_code": "llm_unavailable"
+  }
+}
+```
+
+Un comportement réel a été observé pendant le test : `gemma3:1b` a classé
+« tout le stock de l'agence » comme une consultation de produit précis. La
+garde déterministe a donc été étendue aux intentions sensibles
+`stock_by_branch` et `access_management`. En cas de désaccord, aucun tool
+sensible n'est appelé et la réponse expose
+`failure_code: "llm_security_override"`.
+
+`/health` indique si le LLM est activé, si Ollama est joignable et si
+`gemma3:1b` est réellement présent.
 
 ## 9. Travaux réalisés pendant la session
 
@@ -279,7 +306,9 @@ modèle configuré.
 - Ajout de la politique d'accès par profil.
 - Ajout des questions de suivi avec historique.
 - Ajout de réponses fondées sur les sources réelles.
-- Ajout d'Ollama comme interpréteur optionnel et maintenant activé.
+- Ajout d'Ollama comme planificateur principal avec repli déterministe.
+- Ajout de la validation des plans LLM et de l'observabilité des replis.
+- Déplacement du contrôle d'accès avant tout accès aux données.
 - Conservation d'une façade compatible avec l'ancien service.
 
 ### Client Web
@@ -339,15 +368,16 @@ Puis ouvrir `http://localhost:8080` et poser :
 3. La politique utilisateur ne gère actuellement qu'une agence principale
    par utilisateur.
 4. Le chat reste volontairement en lecture seule.
-5. Une évolution utile serait d'exposer dans les métadonnées si le plan
-   déterministe ou Ollama a été retenu, afin de faciliter l'observabilité.
+5. En cas de repli, la réponse reste fonctionnelle mais
+   `planning.failure_code` doit être surveillé pour détecter une panne Ollama.
 
 ## 12. Critères de réussite
 
 La chaîne est considérée opérationnelle lorsque :
 
 - le serveur Ollama de l'hôte répond à `/api/tags` et contient `gemma3:1b` ;
-- `/health` annonce `llm_enabled: true` et `llm_model: gemma3:1b` ;
+- `/health` annonce `llm_enabled: true`, `llm_reachable: true` et
+  `llm_model_available: true` ;
 - le catalogue renvoie toutes les pages du fournisseur ;
 - une question produit/stock renvoie des sources réelles ;
 - un utilisateur `common` ne peut pas lire le stock complet d'une autre

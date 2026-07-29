@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import unittest
+import urllib.error
 from unittest.mock import MagicMock, patch
 
 from app.ollama_client import OllamaQueryInterpreter
@@ -15,6 +16,8 @@ class OllamaQueryInterpreterTests(unittest.TestCase):
         interpreter = OllamaQueryInterpreter(enabled=False)
 
         self.assertIsNone(interpreter.interpret("Question", []))
+        detailed = interpreter.interpret_detailed("Question", [])
+        self.assertEqual(detailed.failure_code, "llm_disabled")
         urlopen.assert_not_called()
 
     @patch("app.ollama_client.urllib.request.urlopen")
@@ -67,6 +70,34 @@ class OllamaQueryInterpreterTests(unittest.TestCase):
         interpreter = OllamaQueryInterpreter(enabled=True, timeout=5)
 
         self.assertIsNone(interpreter.interpret("Question", []))
+        self.assertEqual(
+            interpreter.interpret_detailed("Question", []).failure_code,
+            "llm_invalid_response",
+        )
+
+    @patch("app.ollama_client.urllib.request.urlopen")
+    def test_network_failure_has_explicit_code(self, urlopen: MagicMock) -> None:
+        urlopen.side_effect = urllib.error.URLError("offline")
+        interpreter = OllamaQueryInterpreter(enabled=True, timeout=5)
+
+        result = interpreter.interpret_detailed("Question", [])
+
+        self.assertEqual(result.failure_code, "llm_unavailable")
+
+    @patch("app.ollama_client.urllib.request.urlopen")
+    def test_availability_checks_configured_model(self, urlopen: MagicMock) -> None:
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.read.return_value = json.dumps(
+            {"models": [{"name": "gemma3:1b"}]}
+        ).encode()
+        urlopen.return_value = response
+        interpreter = OllamaQueryInterpreter(
+            enabled=True,
+            model="gemma3:1b",
+        )
+
+        self.assertEqual(interpreter.availability(), (True, True))
 
 
 if __name__ == "__main__":

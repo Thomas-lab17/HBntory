@@ -67,6 +67,9 @@ class QueryPlan:
     stock_filter: str | None = None
     used_history: bool = False
     list_all_products: bool = False
+    planner_source: str = "deterministic_fallback"
+    planner_status: str = "fallback"
+    planner_failure: str | None = None
 
     @property
     def primary_intent(self) -> Intent:
@@ -112,6 +115,10 @@ class WorkflowResult:
     access: AccessDecision
     sources: list[str] = field(default_factory=list)
     used_history: bool = False
+    planner_source: str = "not_run"
+    planner_status: str = "not_run"
+    planner_confidence: float = 0.0
+    planner_failure: str | None = None
 
 
 @dataclass

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import unicodedata
 
@@ -30,59 +31,141 @@ def normalize_text(text: str) -> str:
 
 
 class QueryAgent:
-    """Route rapidement les cas évidents et sollicite Ollama en dernier recours."""
+    """Utilise Ollama en premier, puis un repli déterministe explicite."""
 
-    def __init__(self, llm: OllamaQueryInterpreter | None = None):
+    def __init__(
+        self,
+        llm: OllamaQueryInterpreter | None = None,
+        min_llm_confidence: float | None = None,
+    ):
         self.llm = llm or OllamaQueryInterpreter()
+        if min_llm_confidence is None:
+            try:
+                min_llm_confidence = float(
+                    os.getenv("AI_LLM_MIN_CONFIDENCE", "0.65")
+                )
+            except ValueError:
+                min_llm_confidence = 0.65
+        self.min_llm_confidence = min(
+            max(min_llm_confidence, 0.0),
+            1.0,
+        )
 
     def run(
         self,
         question: str,
         history: tuple[ConversationMessage, ...] = (),
     ) -> QueryPlan:
-        plan = self._deterministic(question)
+        deterministic_plan = self._deterministic(question)
         previous_questions = [
             message.content
             for message in history
             if message.role == "user" and message.content.strip() != question.strip()
         ]
-
-        if previous_questions and self._looks_like_follow_up(question):
-            previous_plan = self._deterministic(previous_questions[-1])
-            if (
-                plan.primary_intent is Intent.OUT_OF_SCOPE
-                and previous_plan.primary_intent is not Intent.OUT_OF_SCOPE
-            ):
-                plan = QueryPlan(
-                    intents=previous_plan.intents,
-                    confidence=0.75,
-                    product_query=f"{previous_questions[-1]} {question}",
-                    used_history=True,
-                )
-            elif (
-                plan.has(
-                    Intent.PRODUCT_DETAIL,
-                    Intent.STOCK_LOOKUP,
-                    Intent.STOCK_BY_PRODUCT,
-                )
-                and previous_plan.has(
-                    Intent.PRODUCT_DETAIL,
-                    Intent.PRODUCT_SEARCH,
-                    Intent.STOCK_LOOKUP,
-                    Intent.STOCK_BY_PRODUCT,
-                )
-                and not self._has_product_clue(question)
-            ):
-                plan.product_query = f"{previous_questions[-1]} {question}"
-                plan.used_history = True
-
-        if plan.confidence < 0.7:
-            llm_plan = self._from_llm(
-                self.llm.interpret(question, previous_questions),
+        if not self.llm.enabled:
+            plan = self._fallback(deterministic_plan, "llm_disabled")
+        else:
+            interpretation = self.llm.interpret_detailed(
                 question,
+                previous_questions,
             )
-            if llm_plan is not None and llm_plan.confidence > plan.confidence:
-                plan = llm_plan
+            if not interpretation.succeeded:
+                plan = self._fallback(
+                    deterministic_plan,
+                    interpretation.failure_code or "llm_unavailable",
+                )
+            else:
+                llm_plan, failure = self._from_llm(
+                    interpretation.payload,
+                    question,
+                    previous_questions,
+                )
+                if llm_plan is None:
+                    plan = self._fallback(
+                        deterministic_plan,
+                        failure or "llm_invalid_plan",
+                    )
+                elif llm_plan.confidence < self.min_llm_confidence:
+                    plan = self._fallback(
+                        deterministic_plan,
+                        "llm_low_confidence",
+                    )
+                elif any(
+                    deterministic_plan.has(sensitive_intent)
+                    and not llm_plan.has(sensitive_intent)
+                    for sensitive_intent in (
+                        Intent.ACCESS_MANAGEMENT,
+                        Intent.STOCK_BY_BRANCH,
+                    )
+                ):
+                    plan = self._fallback(
+                        deterministic_plan,
+                        "llm_security_override",
+                    )
+                elif (
+                    llm_plan.primary_intent is Intent.OUT_OF_SCOPE
+                    and deterministic_plan.primary_intent is not Intent.OUT_OF_SCOPE
+                ):
+                    plan = self._fallback(
+                        deterministic_plan,
+                        "llm_scope_conflict",
+                    )
+                else:
+                    plan = llm_plan
+                    plan.planner_source = "ollama"
+                    plan.planner_status = "success"
+                    plan.planner_failure = None
+
+        return self._apply_history(plan, question, previous_questions)
+
+    @staticmethod
+    def _fallback(plan: QueryPlan, failure_code: str) -> QueryPlan:
+        plan.planner_source = "deterministic_fallback"
+        plan.planner_status = "fallback"
+        plan.planner_failure = failure_code
+        return plan
+
+    def _apply_history(
+        self,
+        plan: QueryPlan,
+        question: str,
+        previous_questions: list[str],
+    ) -> QueryPlan:
+        if not previous_questions or not self._looks_like_follow_up(question):
+            return plan
+
+        previous_plan = self._deterministic(previous_questions[-1])
+        if (
+            plan.primary_intent is Intent.OUT_OF_SCOPE
+            and previous_plan.primary_intent is not Intent.OUT_OF_SCOPE
+        ):
+            plan.intents = previous_plan.intents
+            plan.confidence = max(plan.confidence, 0.75)
+            plan.product_query = f"{previous_questions[-1]} {question}"
+            plan.used_history = True
+            if plan.planner_source != "ollama":
+                plan.planner_failure = (
+                    plan.planner_failure or "llm_history_recovery"
+                )
+            return plan
+
+        if (
+            plan.has(
+                Intent.PRODUCT_DETAIL,
+                Intent.STOCK_LOOKUP,
+                Intent.STOCK_BY_PRODUCT,
+            )
+            and previous_plan.has(
+                Intent.PRODUCT_DETAIL,
+                Intent.PRODUCT_SEARCH,
+                Intent.STOCK_LOOKUP,
+                Intent.STOCK_BY_PRODUCT,
+            )
+            and not self._has_product_clue(question)
+        ):
+            current_query = plan.product_query or question
+            plan.product_query = f"{previous_questions[-1]} {current_query}"
+            plan.used_history = True
         return plan
 
     def _deterministic(self, question: str) -> QueryPlan:
@@ -219,31 +302,92 @@ class QueryAgent:
         self,
         payload: dict | None,
         question: str,
-    ) -> QueryPlan | None:
-        if not payload:
-            return None
+        previous_questions: list[str],
+    ) -> tuple[QueryPlan | None, str | None]:
+        if not isinstance(payload, dict) or not payload:
+            return None, "llm_invalid_plan"
         raw_intents = payload.get("intents")
-        if not isinstance(raw_intents, list):
-            return None
-        intents = tuple(
-            _LLM_INTENTS[value]
-            for value in raw_intents
-            if isinstance(value, str) and value in _LLM_INTENTS
-        )
-        if not intents:
-            return None
+        if (
+            not isinstance(raw_intents, list)
+            or not 1 <= len(raw_intents) <= 3
+            or any(
+                not isinstance(value, str) or value not in _LLM_INTENTS
+                for value in raw_intents
+            )
+        ):
+            return None, "llm_invalid_intents"
+        intents = tuple(dict.fromkeys(_LLM_INTENTS[value] for value in raw_intents))
+        if (
+            Intent.OUT_OF_SCOPE in intents and len(intents) > 1
+        ) or (
+            Intent.ACCESS_MANAGEMENT in intents and len(intents) > 1
+        ):
+            return None, "llm_invalid_intents"
+
         try:
             confidence = min(max(float(payload.get("confidence", 0.0)), 0.0), 1.0)
         except (TypeError, ValueError):
-            confidence = 0.0
+            return None, "llm_invalid_confidence"
+
         product_query = payload.get("product_query")
         branch = payload.get("branch")
+        stock_filter = payload.get("stock_filter")
+        list_all_products = payload.get("list_all_products", False)
+        used_history = payload.get("used_history", False)
+
+        if product_query is not None and not isinstance(product_query, str):
+            return None, "llm_invalid_entities"
+        if branch is not None and not isinstance(branch, str):
+            return None, "llm_invalid_entities"
+        if stock_filter not in {None, "out_of_stock", "low_stock"}:
+            return None, "llm_invalid_filter"
+        if not isinstance(list_all_products, bool) or not isinstance(
+            used_history,
+            bool,
+        ):
+            return None, "llm_invalid_flags"
+
+        clean_branch = branch.strip() if isinstance(branch, str) else None
+        if clean_branch:
+            user_context = normalize_text(
+                " ".join([*previous_questions, question])
+            )
+            if normalize_text(clean_branch) not in user_context:
+                return None, "llm_ungrounded_branch"
+
+        needs_product = any(
+            intent
+            in {
+                Intent.PRODUCT_DETAIL,
+                Intent.PRODUCT_SEARCH,
+                Intent.STOCK_LOOKUP,
+                Intent.STOCK_BY_PRODUCT,
+            }
+            for intent in intents
+        )
+        # Le LLM choisit une intention, mais il ne fabrique jamais la requête
+        # transmise aux tools. Elle reste fondée sur les mots de l'utilisateur.
+        clean_product_query = None
+        if needs_product:
+            clean_product_query = question
+            if used_history and previous_questions:
+                clean_product_query = f"{previous_questions[-1]} {question}"
+        if stock_filter is not None and Intent.STOCK_BY_BRANCH not in intents:
+            return None, "llm_invalid_filter"
+        if list_all_products and Intent.PRODUCT_SEARCH not in intents:
+            return None, "llm_invalid_flags"
+
         return QueryPlan(
             intents=intents,
             confidence=confidence,
-            product_query=product_query if isinstance(product_query, str) else question,
-            branch=branch if isinstance(branch, str) else None,
-        )
+            product_query=clean_product_query,
+            branch=clean_branch,
+            stock_filter=stock_filter,
+            used_history=used_history and bool(previous_questions),
+            list_all_products=list_all_products,
+            planner_source="ollama",
+            planner_status="success",
+        ), None
 
     @staticmethod
     def _contains_any(text: str, expressions: tuple[str, ...]) -> bool:

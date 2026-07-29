@@ -28,6 +28,10 @@ class AgentAnswer:
     access_granted: bool = True
     access_scope: str = "public"
     used_history: bool = False
+    planner_source: str = "not_run"
+    planner_status: str = "not_run"
+    planner_confidence: float = 0.0
+    planner_failure: str | None = None
     # Conservé pour les anciens consommateurs de la façade.
     tool_result: object | None = None
 
@@ -81,4 +85,8 @@ class Agent:
             access_granted=result.access.granted,
             access_scope=result.access.scope,
             used_history=result.used_history,
+            planner_source=result.planner_source,
+            planner_status=result.planner_status,
+            planner_confidence=result.planner_confidence,
+            planner_failure=result.planner_failure,
         )

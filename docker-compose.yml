@@ -66,7 +66,8 @@ services:
       AI_LLM_ENABLED: ${AI_LLM_ENABLED:-true}
       OLLAMA_API_BASE: ${OLLAMA_API_BASE:-http://host.docker.internal:11434}
       MODEL_NAME: ${MODEL_NAME:-gemma3:1b}
-      OLLAMA_TIMEOUT_SECONDS: ${OLLAMA_TIMEOUT_SECONDS:-120}
+      OLLAMA_TIMEOUT_SECONDS: ${OLLAMA_TIMEOUT_SECONDS:-15}
+      AI_LLM_MIN_CONFIDENCE: ${AI_LLM_MIN_CONFIDENCE:-0.65}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

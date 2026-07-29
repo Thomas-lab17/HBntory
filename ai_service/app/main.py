@@ -36,6 +36,13 @@ class AccessMetadata(BaseModel):
     authenticated: bool
 
 
+class PlanningMetadata(BaseModel):
+    source: str
+    status: str
+    confidence: float
+    failure_code: str | None
+
+
 class AskResponse(BaseModel):
     answer: str
     intent: str
@@ -46,18 +53,22 @@ class AskResponse(BaseModel):
     agent: str
     sources: list[str]
     access: AccessMetadata
+    planning: PlanningMetadata
     used_history: bool
 
 
 @app.get("/health", tags=["system"])
 def health() -> dict[str, str | bool]:
     llm = _agent.workflow.query_agent.llm
+    llm_reachable, llm_model_available = llm.availability()
     return {
         "status": "ok",
         "service": "ai-service",
         "workflow": "multi-agent",
         "llm_enabled": llm.enabled,
         "llm_model": llm.model,
+        "llm_reachable": llm_reachable,
+        "llm_model_available": llm_model_available,
     }
 
 
@@ -95,6 +106,12 @@ def ask(
             granted=result.access_granted,
             scope=result.access_scope,
             authenticated=user.authenticated,
+        ),
+        planning=PlanningMetadata(
+            source=result.planner_source,
+            status=result.planner_status,
+            confidence=result.planner_confidence,
+            failure_code=result.planner_failure,
         ),
         used_history=result.used_history,
     )

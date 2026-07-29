@@ -19,7 +19,7 @@ class AccessAgent:
     def evaluate(self, state: WorkflowState) -> AccessDecision:
         plan = state.plan
         user = state.user
-        requested_branch = state.entities.branch
+        requested_branch = state.entities.branch or plan.branch
 
         if plan.has(Intent.ACCESS_INFO):
             if not user.authenticated:

@@ -194,6 +194,8 @@ class AgentWorkflowTests(unittest.TestCase):
         self.assertIn("27 inch Lab Monitor", result.reponse)
         self.assertIn("Lyon", result.reponse)
         self.assertIn("40 unité(s)", result.reponse)
+        self.assertEqual(result.planner_status, "fallback")
+        self.assertEqual(result.planner_failure, "llm_disabled")
         self.assertEqual(
             data_client.calls[-1],
             ("get_stock_by_product_id", ("101", "Lyon")),
@@ -329,10 +331,7 @@ class AgentWorkflowTests(unittest.TestCase):
         self.assertFalse(result.access_granted)
         self.assertEqual(result.access_scope, "public_item_only")
         self.assertIn("connexion au backoffice", result.reponse)
-        self.assertEqual(
-            data_client.call_counts["list_stock_by_branch"],
-            0,
-        )
+        self.assertEqual(data_client.calls, [])
 
     def test_common_peut_lire_le_stock_de_sa_propre_agence(self) -> None:
         agent, data_client = self.make_agent()

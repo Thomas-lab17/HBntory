@@ -70,6 +70,12 @@ class AgentWorkflow:
             )
 
         plan = self.query_agent.run(normalized_question, history)
+        if plan.planner_status == "fallback":
+            logger.warning(
+                "Workflow %s: repli déterministe du planificateur (%s)",
+                request_id,
+                plan.planner_failure or "llm_unknown_failure",
+            )
         state = WorkflowState(
             request_id=request_id,
             question=normalized_question,
@@ -93,22 +99,21 @@ class AgentWorkflow:
                 agent="query_agent",
                 access=access,
                 used_history=plan.used_history,
+                **self._planner_metadata(plan),
             )
 
         try:
-            state.entities = self.entity_resolver.run(state)
+            # Premier garde déterministe avant tout accès aux données.
             state.access = self.access_agent.evaluate(state)
             if not state.access.granted:
-                return WorkflowResult(
-                    request_id=request_id,
-                    question=normalized_question,
-                    intent=plan.primary_intent,
-                    answer=state.access.reason,
-                    status=WorkflowStatus.DENIED,
-                    agent="access_agent",
-                    access=state.access,
-                    used_history=plan.used_history,
-                )
+                return self._denied(state)
+
+            state.entities = self.entity_resolver.run(state)
+            # Seconde vérification avec les entités réellement résolues, avant
+            # l'appel du tool métier demandé (stock, produit ou agence).
+            state.access = self.access_agent.evaluate(state)
+            if not state.access.granted:
+                return self._denied(state)
 
             outputs: list[AgentOutput] = []
             agents_used: list[str] = []
@@ -155,6 +160,7 @@ class AgentWorkflow:
                 agent="workflow",
                 access=access,
                 used_history=plan.used_history,
+                **self._planner_metadata(plan),
             )
 
     def _finish(
@@ -187,4 +193,32 @@ class AgentWorkflow:
             access=access,
             sources=grounded.sources,
             used_history=state.plan.used_history,
+            **self._planner_metadata(state.plan),
         )
+
+    def _denied(self, state: WorkflowState) -> WorkflowResult:
+        access = state.access or AccessDecision(
+            False,
+            "Accès refusé.",
+            scope=state.user.role.value,
+        )
+        return WorkflowResult(
+            request_id=state.request_id,
+            question=state.question,
+            intent=state.plan.primary_intent,
+            answer=access.reason,
+            status=WorkflowStatus.DENIED,
+            agent="access_agent",
+            access=access,
+            used_history=state.plan.used_history,
+            **self._planner_metadata(state.plan),
+        )
+
+    @staticmethod
+    def _planner_metadata(plan: Any) -> dict[str, Any]:
+        return {
+            "planner_source": plan.planner_source,
+            "planner_status": plan.planner_status,
+            "planner_confidence": plan.confidence,
+            "planner_failure": plan.planner_failure,
+        }

@@ -27,6 +27,11 @@ Via le client public : `POST http://localhost:8080/api/ask`
 | `PRODUCT_MCP_URL` | `http://product-mcp:8002` | Outils produit |
 | `STOCK_API_URL` | `http://backoffice:8000` | Stock / agences |
 | `INTERNAL_API_KEY` | (partagé avec backoffice) | Auth API interne |
+| `AI_LLM_ENABLED` | `true` | Active Ollama comme planificateur principal |
+| `OLLAMA_API_BASE` | `http://host.docker.internal:11434` | Ollama sur l'hôte |
+| `MODEL_NAME` | `gemma3:1b` | Modèle de planification |
+| `OLLAMA_TIMEOUT_SECONDS` | `15` | Délai maximal d'interprétation |
+| `AI_LLM_MIN_CONFIDENCE` | `0.65` | Seuil de validation du plan LLM |
 
 ## Exemples de questions
 
