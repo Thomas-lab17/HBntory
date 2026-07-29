@@ -38,11 +38,6 @@ class AgentAnswer:
 
 # Liste de branches connues, utilisée par l'extracteur d'entités naïf.
 # À remplacer en production par une vraie extraction d'entités (NER / LLM).
-_BRANCHES_CONNUES = ["lyon", "paris"]
-
-_PRODUITS_CONNUS = ["chaise ergonomique", "bureau assis-debout"]
-
-
 def build_default_mcp_client() -> MCPClient:
     """
     Choisit le client de données par défaut selon l'environnement :
@@ -65,7 +60,8 @@ class Agent:
 
     def __init__(self, mcp_client: Optional[MCPClient] = None):
         self.intent_router = IntentRouter()
-        self.tool_caller = ToolCaller(mcp_client or build_default_mcp_client())
+        self._data_client = mcp_client or build_default_mcp_client()
+        self.tool_caller = ToolCaller(self._data_client)
         self.response_builder = ResponseBuilder()
 
     def repondre(self, question: str) -> AgentAnswer:
@@ -101,21 +97,79 @@ class Agent:
             tool_result=tool_result,
         )
 
-    # -- Extraction d'entités très simple, basée sur des listes connues --
-    # NB : en production, remplacer par du NER ou un appel LLM structuré.
-
     def _extraire_entites(self, question: str) -> dict:
         q = question.lower()
         entites: dict = {}
 
-        for produit in _PRODUITS_CONNUS:
-            if produit in q:
-                entites["produit"] = produit
-                break
+        produit = self._match_produit(q, question)
+        if produit:
+            entites["produit"] = produit
 
-        for branche in _BRANCHES_CONNUES:
-            if re.search(rf"\b{re.escape(branche)}\b", q):
-                entites["branche"] = branche.capitalize()
-                break
+        branche = self._match_branche(q)
+        if branche:
+            entites["branche"] = branche
 
         return entites
+
+    def _match_branche(self, question_lower: str) -> Optional[str]:
+        branches: list[str] = []
+        client = self._data_client
+        list_branches = getattr(client, "list_branches", None)
+        if list_branches is not None:
+            try:
+                branches = [
+                    str(branch.get("name"))
+                    for branch in list_branches()
+                    if branch.get("name")
+                ]
+            except Exception:  # noqa: BLE001
+                branches = []
+        if not branches:
+            branches = ["Lyon", "Paris"]
+
+        for name in sorted(branches, key=len, reverse=True):
+            if re.search(rf"\b{re.escape(name.lower())}\b", question_lower):
+                return name
+        return None
+
+    def _match_produit(self, question_lower: str, question_raw: str) -> Optional[str]:
+        products: list[dict] = []
+        list_products = getattr(self._data_client, "list_products", None)
+        if list_products is not None:
+            try:
+                products = list_products()
+            except Exception:  # noqa: BLE001
+                products = []
+
+        best_name: Optional[str] = None
+        best_len = 0
+        for product in products:
+            name = str(product.get("name") or "").strip()
+            name_lower = name.lower()
+            if name and name_lower in question_lower and len(name_lower) > best_len:
+                best_name = name
+                best_len = len(name_lower)
+        if best_name:
+            return best_name
+
+        for product in products:
+            sku = str(product.get("sku") or "").strip()
+            if sku and re.search(rf"\b{re.escape(sku)}\b", question_raw, flags=re.I):
+                return sku
+
+        identifier = re.search(
+            r"\b(?:produit|product|id|référence|reference)\s*[#:]?\s*(\d+)\b",
+            question_lower,
+        )
+        if identifier:
+            return identifier.group(1)
+
+        known_ids = {
+            str(product.get("id"))
+            for product in products
+            if product.get("id") is not None
+        }
+        for token in re.findall(r"\b\d+\b", question_raw):
+            if token in known_ids:
+                return token
+        return None

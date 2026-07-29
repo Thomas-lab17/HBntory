@@ -58,6 +58,7 @@ services:
     build: ./ai_service
     environment:
       APP_ENV: ${APP_ENV:-development}
+      AGENT_DATA_CLIENT: ${AGENT_DATA_CLIENT:-http}
       STOCK_API_URL: http://backoffice:8000
       PRODUCT_MCP_URL: http://product-mcp:8002
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key}
