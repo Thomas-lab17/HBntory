@@ -1,10 +1,35 @@
 # AI Query Service
 
-Objectif : répondre aux questions des visiteurs à partir des stocks réels et
-des informations produit récupérées via le serveur MCP.
+Répond aux questions publiques à partir des **données réelles** :
 
-Le service ne modifie jamais le stock. Il devra couvrir les détails produit, la
-disponibilité d'un produit par agence, les produits d'une agence et les listes
-de courses, tout en refusant les demandes hors périmètre.
+- catalogue produit via `product-mcp`
+- stock / agences via l’API interne Backoffice (`X-Internal-Api-Key`)
 
-Le conteneur expose temporairement `GET /health` sur le port `8001`.
+## Endpoints
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/health` | Santé du service |
+| `POST` | `/ask` | Question → réponse agent |
+
+### `POST /ask`
+
+```json
+{ "question": "Quel est le prix du Holberton Student Laptop 14 ?" }
+```
+
+Via le client public : `POST http://localhost:8080/api/ask`
+
+## Variables d’environnement
+
+| Variable | Défaut compose | Rôle |
+|----------|----------------|------|
+| `PRODUCT_MCP_URL` | `http://product-mcp:8002` | Outils produit |
+| `STOCK_API_URL` | `http://backoffice:8000` | Stock / agences |
+| `INTERNAL_API_KEY` | (partagé avec backoffice) | Auth API interne |
+
+## Exemples de questions
+
+- `Quel est le prix du Holberton Student Laptop 14 ?`
+- `Est-ce que le produit 1 est disponible à Paris ?`
+- `Quels sont les horaires de l'agence de Lyon ?` (nom OK ; adresse/horaires non en base)

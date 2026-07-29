@@ -1,20 +1,17 @@
 """
 product_client.py
 ------------------
-Thin HTTP client responsible for ALL communication with the external
-Product API. This is the only module that knows about HTTP status codes,
-timeouts, sockets, etc. Everything above this layer (the MCP tools) only
-ever sees clean Python exceptions or clean data.
-
-Uses only the Python standard library (urllib) so it has zero external
-dependencies and can run in any environment.
+Thin HTTP client for the external Product API (stdlib only).
 """
 
+from __future__ import annotations
+
 import json
-import socket
-import urllib.request
-import urllib.error
 import os
+import socket
+import urllib.error
+import urllib.parse
+import urllib.request
 
 
 class ProductAPIError(Exception):
@@ -31,30 +28,33 @@ class ProductNotFoundError(ProductAPIError):
 
 
 class ProductAPIConnectionError(ProductAPIError):
-    """Raised when the Product API cannot be reached at all (DNS, refused
-    connection, timeout, etc.) -- i.e. we never got an HTTP response."""
+    """Raised when the Product API cannot be reached at all."""
 
 
 class ProductAPIClient:
     """
-    Client for the external Product API.
+    Client for the external HBntory Product API.
 
-    Expected external API contract (adjust base_url / paths to match the
-    real Product API you are given):
-
-        GET {base_url}/products            -> 200 {"products": [ {...}, ... ]}
-        GET {base_url}/products/{id}        -> 200 {...single product...}
-                                             -> 404 if the id does not exist
+    Contract:
+        GET {base}/api/v1/products            -> 200 {"results": [...]}
+        GET {base}/api/v1/products/{id_or_sku} -> 200 {...} | 404
     """
 
-    def __init__(self, base_url: str | None = None, api_key: str | None = None,
-                 timeout: float = 5.0):
-        self.base_url = (base_url or os.environ.get(
-            "PRODUCT_API_BASE_URL", "http://localhost:8000")).rstrip("/")
+    def __init__(
+        self,
+        base_url: str | None = None,
+        api_key: str | None = None,
+        timeout: float = 5.0,
+    ):
+        raw = (
+            base_url
+            or os.environ.get("PRODUCT_API_URL")
+            or os.environ.get("PRODUCT_API_BASE_URL")
+            or "http://localhost:5001"
+        )
+        self.base_url = raw.rstrip("/")
         self.api_key = api_key or os.environ.get("PRODUCT_API_KEY")
         self.timeout = timeout
-
-    # ---- internal helpers -------------------------------------------------
 
     def _build_request(self, path: str) -> urllib.request.Request:
         url = f"{self.base_url}{path}"
@@ -64,22 +64,15 @@ class ProductAPIClient:
         return urllib.request.Request(url, headers=headers, method="GET")
 
     def _do_get(self, path: str):
-        """
-        Performs a GET request and returns (status_code, parsed_json).
-        Raises ProductAPIConnectionError for anything that means "we could
-        not talk to the API at all".
-        """
         req = self._build_request(path)
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 status = resp.status
                 body = resp.read().decode("utf-8")
         except urllib.error.HTTPError as e:
-            # We DID get a response from the server, just a non-2xx one.
             status = e.code
             body = e.read().decode("utf-8") if e.fp else ""
         except urllib.error.URLError as e:
-            # DNS failure, connection refused, etc. -- no response at all.
             raise ProductAPIConnectionError(
                 f"Could not connect to Product API at {self.base_url}{path}: {e.reason}"
             ) from e
@@ -89,7 +82,6 @@ class ProductAPIClient:
                 f"after {self.timeout}s"
             ) from e
         except OSError as e:
-            # Catch-all for low level connection issues (e.g. refused).
             raise ProductAPIConnectionError(
                 f"Network error contacting Product API at {self.base_url}{path}: {e}"
             ) from e
@@ -105,33 +97,33 @@ class ProductAPIClient:
                 )
         return status, parsed
 
-    # ---- public API ---------------------------------------------------
-
     def list_products(self) -> list:
-        """Returns a list of raw product dicts as provided by the API."""
-        status, data = self._do_get("/products")
+        status, data = self._do_get("/api/v1/products?limit=100&sort=name")
         if status == 200:
-            if isinstance(data, dict) and "products" in data:
-                return data["products"]
+            if isinstance(data, dict):
+                if isinstance(data.get("results"), list):
+                    return data["results"]
+                if isinstance(data.get("products"), list):
+                    return data["products"]
             if isinstance(data, list):
                 return data
             raise ProductAPIError(
-                f"Product API returned an unexpected shape for /products: {data!r}",
+                f"Product API returned an unexpected shape for list: {data!r}",
                 status_code=status,
             )
         raise ProductAPIError(
-            f"Product API returned unexpected status {status} for /products",
+            f"Product API returned unexpected status {status} for list products",
             status_code=status,
         )
 
     def get_product(self, product_id: str) -> dict:
-        """Returns the raw product dict for a single product id."""
-        status, data = self._do_get(f"/products/{product_id}")
+        encoded = urllib.parse.quote(str(product_id).strip(), safe="")
+        status, data = self._do_get(f"/api/v1/products/{encoded}")
         if status == 200:
             if isinstance(data, dict):
                 return data
             raise ProductAPIError(
-                f"Product API returned an unexpected shape for /products/{product_id}: {data!r}",
+                f"Product API returned an unexpected shape for product {product_id}: {data!r}",
                 status_code=status,
             )
         if status == 404:
@@ -139,6 +131,6 @@ class ProductAPIClient:
                 f"Product '{product_id}' was not found.", status_code=404
             )
         raise ProductAPIError(
-            f"Product API returned unexpected status {status} for /products/{product_id}",
+            f"Product API returned unexpected status {status} for product {product_id}",
             status_code=status,
         )

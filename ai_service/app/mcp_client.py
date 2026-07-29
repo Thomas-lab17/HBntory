@@ -27,6 +27,15 @@ class MCPClient(Protocol):
     def get_branche(self, nom_ou_ref: str) -> Optional[dict]:
         ...
 
+    def list_stock_by_branch(self, branche: str) -> list:
+        ...
+
+    def list_stock_by_product(self, nom_ou_ref: str) -> list:
+        ...
+
+    def list_all_stock(self) -> list:
+        ...
+
 
 class MockMCPClient:
     """
@@ -80,3 +89,53 @@ class MockMCPClient:
     def get_branche(self, nom_ou_ref: str) -> Optional[dict]:
         key = nom_ou_ref.strip().lower()
         return self._BRANCHES.get(key)
+
+    def list_stock_by_branch(self, branche: str) -> list:
+        name = (branche or "").strip()
+        rows = []
+        for (produit, branch_name), stock in self._STOCKS.items():
+            if branch_name.lower() != name.lower():
+                continue
+            product = self._PRODUITS.get(produit, {})
+            rows.append(
+                {
+                    "external_product_id": product.get("reference", produit),
+                    "product_name": product.get("nom", produit),
+                    "quantite": stock.get("quantite", 0),
+                    "branch_name": branch_name,
+                }
+            )
+        return rows
+
+    def list_stock_by_product(self, nom_ou_ref: str) -> list:
+        key = (nom_ou_ref or "").strip().lower()
+        product = self._PRODUITS.get(key)
+        if not product:
+            return []
+        rows = []
+        for (produit, branch_name), stock in self._STOCKS.items():
+            if produit != key:
+                continue
+            rows.append(
+                {
+                    "external_product_id": product.get("reference", produit),
+                    "product_name": product.get("nom", produit),
+                    "quantite": stock.get("quantite", 0),
+                    "branch_name": branch_name,
+                }
+            )
+        return rows
+
+    def list_all_stock(self) -> list:
+        rows = []
+        for (produit, branch_name), stock in self._STOCKS.items():
+            product = self._PRODUITS.get(produit, {})
+            rows.append(
+                {
+                    "external_product_id": product.get("reference", produit),
+                    "product_name": product.get("nom", produit),
+                    "quantite": stock.get("quantite", 0),
+                    "branch_name": branch_name,
+                }
+            )
+        return rows

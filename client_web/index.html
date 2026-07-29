@@ -1,24 +1,53 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="fr" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark light" id="color-scheme-meta">
   <title>HBntory – Questions produits & stock</title>
   <link rel="stylesheet" href="/css/style.css">
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem('hbntory-theme');
+        var theme = saved === 'light' || saved === 'dark'
+          ? saved
+          : (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        document.documentElement.setAttribute('data-theme', theme);
+      } catch (_) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
 </head>
 <body>
   <header>
     <div class="header-inner">
-      <div class="logo" aria-hidden="true">H</div>
-      <h1>HBntory</h1>
+      <div class="header-brand-wrap">
+        <span class="brand-mark brand-mark-small" aria-hidden="true">◇</span>
+        <div class="header-brand">
+          <h1>HB<span>ntory</span></h1>
+          <p class="header-sub">Assistant produits &amp; stock</p>
+        </div>
+      </div>
+      <button
+        type="button"
+        id="theme-toggle"
+        class="theme-toggle"
+        title="Changer de thème"
+        aria-label="Basculer entre thème sombre et clair"
+      >
+        <span class="icon-sun" aria-hidden="true">☀</span>
+        <span class="icon-moon" aria-hidden="true">☾</span>
+      </button>
     </div>
   </header>
 
   <main>
     <div id="chat-history">
       <div id="empty-state">
-        <div>
-          <div class="icon" aria-hidden="true">💬</div>
+        <div class="empty-card">
+          <div class="icon" aria-hidden="true">◇</div>
           <p>Posez votre première question sur les produits ou le stock.</p>
         </div>
       </div>
@@ -34,10 +63,10 @@
           placeholder="Écrivez votre question..."
           required
         ></textarea>
-        <button type="submit" id="submit-btn" class="icon-btn btn-send" title="Envoyer" aria-label="Envoyer">
+        <button type="submit" id="submit-btn" class="btn btn-primary icon-btn" title="Envoyer" aria-label="Envoyer">
           ▶
         </button>
-        <button type="button" id="clear-btn" class="icon-btn btn-clear" title="Effacer la conversation" aria-label="Effacer">
+        <button type="button" id="clear-btn" class="btn btn-secondary icon-btn" title="Effacer la conversation" aria-label="Effacer">
           ✕
         </button>
       </form>
@@ -45,6 +74,35 @@
   </div>
 
   <script>
+    const THEME_KEY = 'hbntory-theme';
+    const root = document.documentElement;
+    const themeToggle = document.getElementById('theme-toggle');
+    const colorSchemeMeta = document.getElementById('color-scheme-meta');
+
+    function getTheme() {
+      return root.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+    }
+
+    function applyTheme(theme) {
+      const next = theme === 'light' ? 'light' : 'dark';
+      root.setAttribute('data-theme', next);
+      if (colorSchemeMeta) colorSchemeMeta.setAttribute('content', next);
+      themeToggle.setAttribute(
+        'aria-label',
+        next === 'dark' ? 'Passer en thème clair' : 'Passer en thème sombre'
+      );
+      themeToggle.title = next === 'dark' ? 'Thème clair' : 'Thème sombre';
+      try {
+        localStorage.setItem(THEME_KEY, next);
+      } catch (_) {}
+    }
+
+    applyTheme(getTheme());
+
+    themeToggle.addEventListener('click', () => {
+      applyTheme(getTheme() === 'dark' ? 'light' : 'dark');
+    });
+
     const chatHistory = document.getElementById('chat-history');
     const emptyState = document.getElementById('empty-state');
     const form = document.getElementById('question-form');
@@ -52,7 +110,11 @@
     const submitBtn = document.getElementById('submit-btn');
     const clearBtn = document.getElementById('clear-btn');
 
+    const WELCOME_MESSAGE =
+      "Bonjour, je suis l'assistant IA HBntory. Je peux répondre à vos questions sur les produits, le stock et les agences. Posez votre première question ci-dessous.";
+
     let messages = [];
+    let busy = false;
 
     function hideEmptyState() {
       if (emptyState) emptyState.style.display = 'none';
@@ -60,6 +122,15 @@
 
     function showEmptyState() {
       if (emptyState) emptyState.style.display = 'flex';
+    }
+
+    function showWelcome() {
+      messages = [];
+      chatHistory.innerHTML = '';
+      if (emptyState) {
+        emptyState.style.display = 'none';
+      }
+      addMessage('ai', WELCOME_MESSAGE);
     }
 
     function scrollToBottom() {
@@ -95,20 +166,77 @@
       return wrapper;
     }
 
+    function renderLoading() {
+      hideEmptyState();
+      const wrapper = document.createElement('div');
+      wrapper.className = 'message-row ai';
+      wrapper.id = 'loading-row';
+
+      const bubble = document.createElement('div');
+      bubble.className = 'message-bubble ai-bubble loading-bubble';
+      bubble.innerHTML = `
+        <div class="spinner" aria-hidden="true"></div>
+        <span>L'assistant réfléchit…</span>
+      `;
+      wrapper.appendChild(bubble);
+      chatHistory.appendChild(wrapper);
+      scrollToBottom();
+      return wrapper;
+    }
+
+    function removeLoading() {
+      const row = document.getElementById('loading-row');
+      if (row) row.remove();
+    }
+
     function addMessage(role, text) {
       messages.push({ role, text });
       renderMessage(role, text);
     }
 
     function clearConversation() {
-      messages = [];
-      chatHistory.innerHTML = '';
-      chatHistory.appendChild(emptyState);
-      showEmptyState();
+      showWelcome();
     }
 
-    form.addEventListener('submit', (e) => {
+    function setBusy(value) {
+      busy = value;
+      submitBtn.disabled = value;
+      questionInput.disabled = value;
+    }
+
+    async function askAi(question) {
+      const response = await fetch('/api/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question }),
+      });
+
+      let data = null;
+      try {
+        data = await response.json();
+      } catch (_) {
+        data = null;
+      }
+
+      if (!response.ok) {
+        const detail = data && (data.detail || data.message);
+        throw new Error(
+          typeof detail === 'string'
+            ? detail
+            : "Le service IA a renvoyé une erreur. Réessayez dans un instant."
+        );
+      }
+
+      if (!data || typeof data.answer !== 'string') {
+        throw new Error("Réponse du service IA invalide.");
+      }
+
+      return data.answer;
+    }
+
+    form.addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (busy) return;
 
       const question = questionInput.value.trim();
       if (!question) return;
@@ -117,14 +245,28 @@
       questionInput.value = '';
       questionInput.style.height = 'auto';
 
-      // UI only — AI service will be wired later
-      addMessage(
-        'ai',
-        "Le service IA n'est pas encore connecté. Votre question a bien été reçue côté interface."
-      );
+      setBusy(true);
+      renderLoading();
+
+      try {
+        const answer = await askAi(question);
+        removeLoading();
+        addMessage('ai', answer);
+      } catch (err) {
+        removeLoading();
+        const message =
+          err && err.message
+            ? err.message
+            : "Le service IA est indisponible pour le moment. Réessayez plus tard.";
+        addMessage('ai', message);
+      } finally {
+        setBusy(false);
+        questionInput.focus();
+      }
     });
 
     clearBtn.addEventListener('click', () => {
+      if (busy) return;
       if (confirm('Effacer toute la conversation ?')) {
         clearConversation();
       }
@@ -141,6 +283,8 @@
       questionInput.style.height = 'auto';
       questionInput.style.height = Math.min(questionInput.scrollHeight, 120) + 'px';
     });
+
+    showWelcome();
   </script>
 </body>
 </html>
