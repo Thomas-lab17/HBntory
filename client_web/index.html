@@ -110,6 +110,9 @@
     const submitBtn = document.getElementById('submit-btn');
     const clearBtn = document.getElementById('clear-btn');
 
+    const WELCOME_MESSAGE =
+      "Bonjour, je suis l'assistant IA HBntory. Je peux répondre à vos questions sur les produits, le stock et les agences. Posez votre première question ci-dessous.";
+
     let messages = [];
     let busy = false;
 
@@ -119,6 +122,15 @@
 
     function showEmptyState() {
       if (emptyState) emptyState.style.display = 'flex';
+    }
+
+    function showWelcome() {
+      messages = [];
+      chatHistory.innerHTML = '';
+      if (emptyState) {
+        emptyState.style.display = 'none';
+      }
+      addMessage('ai', WELCOME_MESSAGE);
     }
 
     function scrollToBottom() {
@@ -183,10 +195,7 @@
     }
 
     function clearConversation() {
-      messages = [];
-      chatHistory.innerHTML = '';
-      chatHistory.appendChild(emptyState);
-      showEmptyState();
+      showWelcome();
     }
 
     function setBusy(value) {
@@ -274,6 +283,8 @@
       questionInput.style.height = 'auto';
       questionInput.style.height = Math.min(questionInput.scrollHeight, 120) + 'px';
     });
+
+    showWelcome();
   </script>
 </body>
 </html>
