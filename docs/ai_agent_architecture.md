@@ -242,4 +242,3 @@ python3 -m unittest discover -s product_mcp_server/tests -q
 docker compose config --quiet
 docker compose up -d --build
 ```
-

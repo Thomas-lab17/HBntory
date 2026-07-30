@@ -1,6 +1,6 @@
 # HBntory — Synthèse d'architecture et stratégie IA
 
-Dernière mise à jour : 29 juillet 2026  
+Dernière mise à jour : 29 juillet 2026
 Branche de travail : `feat/ai-agent`
 
 ## 1. Résumé exécutif
