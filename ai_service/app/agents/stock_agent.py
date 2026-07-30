@@ -26,6 +26,8 @@ class StockAgent:
     def _lookup(self, state: WorkflowState) -> AgentOutput:
         product = state.entities.product
         candidates = state.entities.product_candidates
+        if state.plan.aggregate_matching_products:
+            return self._aggregate_lookup(state, candidates)
         if product is None and len(candidates) > 1:
             labels = ", ".join(product_label(item) for item in candidates)
             return AgentOutput(
@@ -100,6 +102,63 @@ class StockAgent:
                 "branch": branch,
                 "quantity": quantity,
             },
+        )
+
+    def _aggregate_lookup(
+        self,
+        state: WorkflowState,
+        candidates: list[dict[str, Any]],
+    ) -> AgentOutput:
+        branch = (
+            state.access.effective_branch
+            if state.access and state.access.effective_branch
+            else state.entities.branch
+        )
+        if not branch:
+            return AgentOutput(
+                answer="Précisez l'agence pour calculer cette quantité.",
+                status=WorkflowStatus.NEEDS_CLARIFICATION,
+                sources=["backoffice:branches"],
+                evidence={"branch": None},
+            )
+        if not candidates:
+            return AgentOutput(
+                answer="Aucun produit de cette catégorie n'existe dans le catalogue.",
+                sources=["product-mcp:catalogue"],
+                evidence={"products": []},
+            )
+
+        rows: list[dict[str, Any]] = []
+        for candidate in candidates:
+            product_id = str(candidate.get("id") or "")
+            stock = (
+                self.data_client.get_stock_by_product_id(product_id, branch)
+                if product_id
+                else None
+            )
+            quantity = int((stock or {}).get("quantite", 0))
+            rows.append({"product": candidate, "quantity": quantity})
+
+        total = sum(row["quantity"] for row in rows)
+        available = [row for row in rows if row["quantity"] > 0]
+        details = "; ".join(
+            f"{product_label(row['product'])} : {row['quantity']}"
+            for row in available
+        )
+        if not available:
+            answer = (
+                f"Aucun produit correspondant n'est disponible à {branch} "
+                f"({len(rows)} référence(s) vérifiée(s))."
+            )
+        else:
+            answer = (
+                f"À {branch}, {len(available)} référence(s) correspondante(s) "
+                f"totalisent {total} unité(s) en stock : {details}."
+            )
+        return AgentOutput(
+            answer=answer,
+            sources=["product-mcp:catalogue", "backoffice:stock"],
+            evidence={"branch": branch, "rows": rows, "total_quantity": total},
         )
 
     def _by_product(self, state: WorkflowState) -> AgentOutput:

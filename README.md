@@ -86,6 +86,8 @@ La synthèse des rôles, des flux et des choix techniques est disponible dans
 
 La synthèse détaillée du workflow multi-agents, de la stratégie hybride avec
 Ollama et des travaux d'intégration est disponible dans
+[docs/ai_agent_architecture.md](docs/ai_agent_architecture.md). La synthèse
+historique de la session reste disponible dans
 [docs/ai_agent_architecture_and_session_summary.md](docs/ai_agent_architecture_and_session_summary.md).
 
 

@@ -67,6 +67,11 @@ class QueryPlan:
     stock_filter: str | None = None
     used_history: bool = False
     list_all_products: bool = False
+    product_kind: str | None = None
+    price_min: float | None = None
+    price_max: float | None = None
+    currency: str | None = None
+    aggregate_matching_products: bool = False
     planner_source: str = "deterministic_fallback"
     planner_status: str = "fallback"
     planner_failure: str | None = None

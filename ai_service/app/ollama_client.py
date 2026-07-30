@@ -11,6 +11,45 @@ from dataclasses import dataclass
 from typing import Any
 
 
+_PLAN_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "intents": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "enum": [
+                    "product_detail",
+                    "product_search",
+                    "stock_lookup",
+                    "stock_by_product",
+                    "stock_by_branch",
+                    "branch_info",
+                    "branch_list",
+                    "access_info",
+                    "access_management",
+                    "out_of_scope",
+                ],
+            },
+            "minItems": 1,
+            "maxItems": 3,
+        },
+        "product_query": {"type": ["string", "null"]},
+        "branch": {"type": ["string", "null"]},
+        "used_history": {"type": "boolean"},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    },
+    "required": [
+        "intents",
+        "product_query",
+        "branch",
+        "used_history",
+        "confidence",
+    ],
+    "additionalProperties": False,
+}
+
+
 @dataclass(frozen=True)
 class OllamaInterpretation:
     """Résultat explicite d'un appel au planificateur local."""
@@ -70,22 +109,29 @@ class OllamaQueryInterpreter:
             "Tu es le planificateur sémantique HBntory. Identifie la demande "
             "de l'utilisateur, mais ne réponds jamais à sa question, "
             "n'invente aucune donnée et ne décide jamais des permissions. "
-            "Réponds uniquement avec un objet JSON complet, sans explication."
+            "Réponds uniquement avec l'objet JSON imposé, sans explication. "
+            "Toute entité doit provenir mot pour mot de la question ou de "
+            "l'historique fourni."
         )
         user_prompt = f"""
-Format obligatoire :
-{{"intents":["stock_lookup"],"product_query":"écran 27 pouces","branch":"Lyon","stock_filter":null,"list_all_products":false,"used_history":false,"confidence":0.9}}
+Choisis les intentions avec ces règles :
+- prix, fiche ou description d'un produit : product_detail ;
+- recherche par catégorie, caractéristique ou prix : product_search ;
+- quantité d'un produit dans une agence : stock_lookup ;
+- agences où trouver un produit : stock_by_product ;
+- stock complet d'une agence : stock_by_branch ;
+- adresse ou horaires d'une agence : branch_info ;
+- liste des agences HBntory : branch_list ;
+- lecture ou modification des accès : access_info ou access_management ;
+- aucune de ces demandes : out_of_scope.
 
-Intentions autorisées :
-product_detail, product_search, stock_lookup, stock_by_product,
-stock_by_branch, branch_info, branch_list, access_info,
-access_management, out_of_scope.
-
-Filtres de stock autorisés : out_of_stock, low_stock ou null.
-Utilise null lorsque le produit ou l'agence n'est pas précisé.
-Place plusieurs intentions lorsque la question demande plusieurs informations.
-Pour une question de suivi, complète product_query avec le produit de
-l'historique et mets used_history à true.
+Copie uniquement le produit et l'agence réellement demandés.
+Utilise null si une entité ou un filtre est absent.
+Pour un suivi, utilise le produit de la dernière question pertinente et mets
+used_history à true. Une agence citée dans la question actuelle remplace
+toujours celle de l'historique.
+« autres boutiques/agences » signifie stock_by_product.
+« combien de PC portables dans une agence » signifie stock_lookup.
 
 Historique utilisateur :
 {json.dumps(history[-4:], ensure_ascii=False)}
@@ -97,15 +143,15 @@ Question à analyser :
             {
                 "model": self.model,
                 "stream": False,
-                "format": "json",
+                "format": _PLAN_SCHEMA,
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
                 "options": {
                     "temperature": 0,
-                    "num_ctx": 512,
-                    "num_predict": 64,
+                    "num_ctx": 1024,
+                    "num_predict": 80,
                 },
             }
         ).encode("utf-8")

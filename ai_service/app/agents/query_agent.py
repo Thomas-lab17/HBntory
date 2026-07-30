@@ -23,6 +23,14 @@ _LLM_INTENTS = {
     "out_of_scope": Intent.OUT_OF_SCOPE,
 }
 
+_PRODUCT_KINDS = {
+    "laptop",
+    "monitor",
+    "keyboard",
+    "mouse",
+    "headset",
+}
+
 
 def normalize_text(text: str) -> str:
     decomposed = unicodedata.normalize("NFKD", text.lower())
@@ -56,7 +64,10 @@ class QueryAgent:
         question: str,
         history: tuple[ConversationMessage, ...] = (),
     ) -> QueryPlan:
-        deterministic_plan = self._deterministic(question)
+        deterministic_plan = self._apply_question_constraints(
+            self._deterministic(question),
+            question,
+        )
         previous_questions = [
             message.content
             for message in history
@@ -80,6 +91,8 @@ class QueryAgent:
                     question,
                     previous_questions,
                 )
+                if llm_plan is not None:
+                    llm_plan = self._sanitize_llm_plan(llm_plan, question)
                 if llm_plan is None:
                     plan = self._fallback(
                         deterministic_plan,
@@ -110,13 +123,23 @@ class QueryAgent:
                         deterministic_plan,
                         "llm_scope_conflict",
                     )
+                elif self._has_semantic_conflict(
+                    deterministic_plan,
+                    llm_plan,
+                    question,
+                ):
+                    plan = self._fallback(
+                        deterministic_plan,
+                        "llm_semantic_override",
+                    )
                 else:
                     plan = llm_plan
                     plan.planner_source = "ollama"
                     plan.planner_status = "success"
                     plan.planner_failure = None
 
-        return self._apply_history(plan, question, previous_questions)
+        plan = self._apply_history(plan, question, previous_questions)
+        return self._apply_question_constraints(plan, question)
 
     @staticmethod
     def _fallback(plan: QueryPlan, failure_code: str) -> QueryPlan:
@@ -132,9 +155,31 @@ class QueryAgent:
         previous_questions: list[str],
     ) -> QueryPlan:
         if not previous_questions or not self._looks_like_follow_up(question):
-            return plan
+            if not previous_questions or not self._asks_other_locations(question):
+                return plan
 
         previous_plan = self._deterministic(previous_questions[-1])
+        if (
+            self._is_location_follow_up(question)
+            and previous_plan.has(
+                Intent.PRODUCT_DETAIL,
+                Intent.PRODUCT_SEARCH,
+                Intent.STOCK_LOOKUP,
+                Intent.STOCK_BY_PRODUCT,
+            )
+        ):
+            plan.intents = (Intent.STOCK_LOOKUP,)
+            plan.product_query = f"{previous_questions[-1]} {question}"
+            plan.used_history = True
+            return plan
+
+        if self._asks_other_locations(question):
+            plan.intents = (Intent.STOCK_BY_PRODUCT,)
+            plan.product_query = f"{previous_questions[-1]} {question}"
+            plan.branch = None
+            plan.used_history = True
+            return plan
+
         if (
             plan.primary_intent is Intent.OUT_OF_SCOPE
             and previous_plan.primary_intent is not Intent.OUT_OF_SCOPE
@@ -163,8 +208,7 @@ class QueryAgent:
             )
             and not self._has_product_clue(question)
         ):
-            current_query = plan.product_query or question
-            plan.product_query = f"{previous_questions[-1]} {current_query}"
+            plan.product_query = f"{previous_questions[-1]} {question}"
             plan.used_history = True
         return plan
 
@@ -190,7 +234,7 @@ class QueryAgent:
             (
                 "stock", "disponible", "disponibilite", "quantite",
                 "combien reste", "reste t il", "rupture", "en reserve",
-                "y a t il", "dispo",
+                "y a t il", "dispo", "trouver", "boutique", "boutiques",
             ),
         )
 
@@ -216,7 +260,7 @@ class QueryAgent:
             text,
             (
                 "agence", "magasin", "branche", "succursale", "point de vente",
-                "adresse", "horaires",
+                "adresse", "horaires", "boutique", "boutiques",
             ),
         )
 
@@ -226,6 +270,7 @@ class QueryAgent:
                 (
                     "ou est disponible", "ou trouver", "quelles agences",
                     "quels magasins", "dans quelle agence", "dans quels magasins",
+                    "autres boutiques", "autre boutique", "quelles boutiques",
                 ),
             ):
                 intents = [Intent.STOCK_BY_PRODUCT]
@@ -291,7 +336,12 @@ class QueryAgent:
         if branch_signal:
             if self._contains_any(
                 text,
-                ("quelles agences", "liste des agences", "toutes les agences"),
+                (
+                    "quelles agences",
+                    "quelles sont les agences",
+                    "liste des agences",
+                    "toutes les agences",
+                ),
             ):
                 return QueryPlan((Intent.BRANCH_LIST,), 0.9)
             return QueryPlan((Intent.BRANCH_INFO,), 0.8)
@@ -333,6 +383,14 @@ class QueryAgent:
         branch = payload.get("branch")
         stock_filter = payload.get("stock_filter")
         list_all_products = payload.get("list_all_products", False)
+        product_kind = payload.get("product_kind")
+        price_min = payload.get("price_min")
+        price_max = payload.get("price_max")
+        currency = payload.get("currency")
+        aggregate_matching_products = payload.get(
+            "aggregate_matching_products",
+            False,
+        )
         used_history = payload.get("used_history", False)
 
         if product_query is not None and not isinstance(product_query, str):
@@ -341,19 +399,43 @@ class QueryAgent:
             return None, "llm_invalid_entities"
         if stock_filter not in {None, "out_of_stock", "low_stock"}:
             return None, "llm_invalid_filter"
+        if product_kind not in {None, *_PRODUCT_KINDS}:
+            return None, "llm_invalid_filter"
+        if currency not in {None, "USD", "EUR"}:
+            return None, "llm_invalid_filter"
+        parsed_prices: list[float | None] = []
+        for raw_price in (price_min, price_max):
+            if raw_price is None:
+                parsed_prices.append(None)
+                continue
+            try:
+                parsed_price = float(raw_price)
+            except (TypeError, ValueError):
+                return None, "llm_invalid_filter"
+            if not 0 <= parsed_price <= 1_000_000:
+                return None, "llm_invalid_filter"
+            parsed_prices.append(parsed_price)
         if not isinstance(list_all_products, bool) or not isinstance(
             used_history,
             bool,
-        ):
+        ) or not isinstance(aggregate_matching_products, bool):
             return None, "llm_invalid_flags"
 
         clean_branch = branch.strip() if isinstance(branch, str) else None
         if clean_branch:
-            user_context = normalize_text(
-                " ".join([*previous_questions, question])
-            )
-            if normalize_text(clean_branch) not in user_context:
+            normalized_branch = normalize_text(clean_branch)
+            normalized_question = normalize_text(question)
+            previous_context = normalize_text(" ".join(previous_questions))
+            if (
+                normalized_branch not in normalized_question
+                and normalized_branch not in previous_context
+            ):
                 return None, "llm_ungrounded_branch"
+            if (
+                normalized_branch not in normalized_question
+                and self._has_current_location_clue(question)
+            ):
+                return None, "llm_history_branch_conflict"
 
         needs_product = any(
             intent
@@ -377,6 +459,26 @@ class QueryAgent:
         if list_all_products and Intent.PRODUCT_SEARCH not in intents:
             return None, "llm_invalid_flags"
 
+        detected_kind = self._extract_product_kind(question)
+        if detected_kind is None and used_history and previous_questions:
+            detected_kind = self._extract_product_kind(previous_questions[-1])
+        if product_kind is not None and product_kind != detected_kind:
+            return None, "llm_ungrounded_filter"
+        detected_min, detected_max, detected_currency = self._extract_price_filters(
+            question
+        )
+        if (
+            parsed_prices[0] is not None
+            and parsed_prices[0] != detected_min
+        ) or (
+            parsed_prices[1] is not None
+            and parsed_prices[1] != detected_max
+        ) or (
+            currency is not None
+            and currency != detected_currency
+        ):
+            return None, "llm_ungrounded_filter"
+
         return QueryPlan(
             intents=intents,
             confidence=confidence,
@@ -385,6 +487,11 @@ class QueryAgent:
             stock_filter=stock_filter,
             used_history=used_history and bool(previous_questions),
             list_all_products=list_all_products,
+            product_kind=detected_kind,
+            price_min=detected_min,
+            price_max=detected_max,
+            currency=detected_currency,
+            aggregate_matching_products=aggregate_matching_products,
             planner_source="ollama",
             planner_status="success",
         ), None
@@ -400,6 +507,195 @@ class QueryAgent:
             text.startswith(("et ", "sinon ", "alors "))
             or len(text.split()) <= 5
         )
+
+    @staticmethod
+    def _asks_other_locations(question: str) -> bool:
+        text = normalize_text(question)
+        return (
+            any(word in text for word in ("boutique", "magasin", "agence"))
+            and any(
+                expression in text
+                for expression in (
+                    "autre",
+                    "ou trouver",
+                    "ou est",
+                    "dans quel",
+                    "dans quelle",
+                )
+            )
+        )
+
+    @staticmethod
+    def _has_current_location_clue(question: str) -> bool:
+        text = normalize_text(question)
+        return bool(
+            re.search(r"^(?:et\s+)?(?:a|dans|pour)\s+\w+", text)
+            or re.search(
+                r"\b(?:agence|magasin|boutique|branche)\s+(?:de\s+)?\w+",
+                text,
+            )
+        )
+
+    @staticmethod
+    def _is_location_follow_up(question: str) -> bool:
+        text = normalize_text(question)
+        return bool(
+            re.search(r"^(?:et|sinon|alors)\s+(?:a|dans|pour)\s+\w+", text)
+        )
+
+    @staticmethod
+    def _extract_product_kind(question: str) -> str | None:
+        text = normalize_text(question)
+        mappings = (
+            (
+                "laptop",
+                (
+                    "pc portable",
+                    "pcs portables",
+                    "ordinateur portable",
+                    "ordinateurs portables",
+                    "laptops",
+                ),
+            ),
+            ("monitor", ("ecran", "ecrans", "moniteur", "moniteurs", "monitor")),
+            ("keyboard", ("clavier", "claviers", "keyboard")),
+            ("mouse", ("souris", "mouse")),
+            ("headset", ("casque", "casques", "headset")),
+        )
+        for kind, expressions in mappings:
+            if any(expression in text for expression in expressions):
+                return kind
+        return None
+
+    @staticmethod
+    def _extract_price_filters(
+        question: str,
+    ) -> tuple[float | None, float | None, str | None]:
+        normalized = normalize_text(question)
+        raw = question.lower().replace(",", ".")
+        number = r"(\d+(?:\.\d+)?)"
+        maximum_patterns = (
+            rf"(?:moins\s+de|sous|max(?:imum)?(?:\s+de)?)\s*{number}",
+            rf"(?:a|à)?\s*-\s*de\s*{number}",
+            rf"<\s*=?\s*{number}",
+        )
+        minimum_patterns = (
+            rf"(?:plus\s+de|au\s+dessus\s+de|min(?:imum)?(?:\s+de)?)\s*{number}",
+            rf">\s*=?\s*{number}",
+        )
+
+        def extract(patterns: tuple[str, ...]) -> float | None:
+            for pattern in patterns:
+                match = re.search(pattern, raw)
+                if match:
+                    return float(match.group(1))
+            return None
+
+        price_min = extract(minimum_patterns)
+        price_max = extract(maximum_patterns)
+        currency = None
+        if "$" in question or any(
+            token in normalized for token in ("usd", "dollar", "dollars")
+        ):
+            currency = "USD"
+        elif "€" in question or any(
+            token in normalized for token in ("eur", "euro", "euros")
+        ):
+            currency = "EUR"
+        return price_min, price_max, currency
+
+    def _apply_question_constraints(
+        self,
+        plan: QueryPlan,
+        question: str,
+    ) -> QueryPlan:
+        price_min, price_max, currency = self._extract_price_filters(question)
+        product_kind = self._extract_product_kind(question)
+        plan.price_min = price_min
+        plan.price_max = price_max
+        plan.currency = currency
+        if product_kind is not None or not plan.used_history:
+            plan.product_kind = product_kind
+        plan.aggregate_matching_products = bool(
+            product_kind
+            and plan.has(Intent.STOCK_LOOKUP)
+            and "combien" in normalize_text(question)
+        )
+        return plan
+
+    def _has_semantic_conflict(
+        self,
+        deterministic_plan: QueryPlan,
+        llm_plan: QueryPlan,
+        question: str,
+    ) -> bool:
+        text = normalize_text(question)
+        if (
+            deterministic_plan.has(Intent.BRANCH_LIST)
+            and not llm_plan.has(Intent.BRANCH_LIST)
+        ):
+            return True
+        if (
+            deterministic_plan.has(Intent.BRANCH_INFO)
+            and self._contains_any(text, ("horaires", "adresse", "ou se trouve"))
+            and not llm_plan.has(Intent.BRANCH_INFO)
+        ):
+            return True
+        if (
+            deterministic_plan.aggregate_matching_products
+            and not llm_plan.has(Intent.STOCK_LOOKUP)
+        ):
+            return True
+        if (
+            deterministic_plan.has(Intent.PRODUCT_SEARCH)
+            and deterministic_plan.price_max is not None
+            and not llm_plan.has(Intent.PRODUCT_SEARCH)
+        ):
+            return True
+        if (
+            deterministic_plan.has(Intent.STOCK_BY_PRODUCT)
+            and self._asks_other_locations(question)
+            and not llm_plan.has(Intent.STOCK_BY_PRODUCT)
+        ):
+            return True
+        return False
+
+    def _sanitize_llm_plan(
+        self,
+        plan: QueryPlan,
+        question: str,
+    ) -> QueryPlan:
+        """Retire les intentions secondaires non demandées explicitement."""
+        text = normalize_text(question)
+        asks_branch_list = self._contains_any(
+            text,
+            (
+                "quelles agences",
+                "quelles sont les agences",
+                "liste des agences",
+                "toutes les agences",
+            ),
+        )
+        asks_branch_info = self._contains_any(
+            text,
+            ("horaires", "adresse", "ou se trouve"),
+        )
+        intents = tuple(
+            intent
+            for intent in plan.intents
+            if not (
+                intent is Intent.BRANCH_LIST
+                and not asks_branch_list
+                and not asks_branch_info
+            )
+            and not (
+                intent is Intent.BRANCH_INFO
+                and not asks_branch_info
+                and not asks_branch_list
+            )
+        )
+        plan.intents = intents or (Intent.OUT_OF_SCOPE,)
+        return plan
 
     @staticmethod
     def _has_product_clue(question: str) -> bool:

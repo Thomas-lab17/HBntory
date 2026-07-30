@@ -47,6 +47,42 @@ class FakeDataClient:
             "price": 69.00,
             "currency": "EUR",
         },
+        {
+            "id": "301",
+            "sku": "LAP-14",
+            "name": "Holberton Student Laptop 14",
+            "description": "Student laptop.",
+            "category": "Laptops",
+            "price": 799.00,
+            "currency": "USD",
+        },
+        {
+            "id": "302",
+            "sku": "LAP-16",
+            "name": "Holberton Student Laptop 16",
+            "description": "Large student laptop.",
+            "category": "Laptops",
+            "price": 999.00,
+            "currency": "USD",
+        },
+        {
+            "id": "303",
+            "sku": "BAG-14",
+            "name": "Laptop Backpack",
+            "description": "Laptop transport accessory.",
+            "category": "Accessories",
+            "price": 49.00,
+            "currency": "USD",
+        },
+        {
+            "id": "304",
+            "sku": "PWR-65",
+            "name": "Laptop Charger 65W",
+            "description": "Laptop power accessory.",
+            "category": "Power",
+            "price": 34.50,
+            "currency": "USD",
+        },
     ]
     BRANCHES = [
         {"id": 1, "name": "Lyon"},
@@ -58,6 +94,13 @@ class FakeDataClient:
         ("102", "Lyon"): 12,
         ("102", "Paris"): 0,
         ("201", "Lyon"): 5,
+        ("301", "Lyon"): 8,
+        ("301", "Paris"): 4,
+        ("302", "Lyon"): 7,
+        ("302", "Paris"): 6,
+        ("303", "Paris"): 25,
+        ("304", "Lyon"): 2,
+        ("304", "Paris"): 1,
     }
 
     def __init__(self) -> None:
@@ -243,7 +286,7 @@ class AgentWorkflowTests(unittest.TestCase):
 
         self.assertEqual(result.intent, Intent.PRODUCT_SEARCH)
         self.assertEqual(result.status, WorkflowStatus.ANSWERED)
-        self.assertIn("contient 3 produit(s)", result.reponse)
+        self.assertIn("contient 7 produit(s)", result.reponse)
         self.assertIn("27 inch Lab Monitor", result.reponse)
         self.assertEqual(data_client.call_counts["list_stock_by_branch"], 0)
 
@@ -291,6 +334,91 @@ class AgentWorkflowTests(unittest.TestCase):
         self.assertEqual(
             data_client.calls[-1],
             ("get_stock_by_product_id", ("101", "Paris")),
+        )
+
+    def test_pc_portables_a_paris_exclut_les_accessoires_et_totalise(self) -> None:
+        agent, data_client = self.make_agent()
+
+        result = agent.repondre(
+            "Combien y a-t-il de PC portables à Paris ?"
+        )
+
+        self.assertEqual(result.intent, Intent.STOCK_LOOKUP)
+        self.assertEqual(result.status, WorkflowStatus.ANSWERED)
+        self.assertIn("totalisent 10 unité(s)", result.reponse)
+        self.assertIn("Holberton Student Laptop 14", result.reponse)
+        self.assertIn("Holberton Student Laptop 16", result.reponse)
+        self.assertNotIn("Laptop Backpack", result.reponse)
+        stock_calls = [
+            call
+            for call in data_client.calls
+            if call[0] == "get_stock_by_product_id"
+        ]
+        self.assertEqual(len(stock_calls), 2)
+
+    def test_filtre_prix_ecran_ne_retourne_pas_de_produit_trop_cher(self) -> None:
+        agent, _ = self.make_agent()
+
+        result = agent.repondre("Je cherche un écran à moins de 100 €.")
+
+        self.assertEqual(result.intent, Intent.PRODUCT_SEARCH)
+        self.assertEqual(result.status, WorkflowStatus.NEEDS_CLARIFICATION)
+        self.assertIn("Aucun produit", result.reponse)
+        self.assertNotIn("179", result.reponse)
+        self.assertNotIn("299", result.reponse)
+
+    def test_suivi_autres_boutiques_reutilise_le_produit(self) -> None:
+        agent, data_client = self.make_agent()
+        history = (
+            ConversationMessage(
+                role="user",
+                content="Laptop Charger est à quel prix ?",
+            ),
+            ConversationMessage(
+                role="assistant",
+                content="Laptop Charger 65W coûte 34.5 USD.",
+            ),
+        )
+
+        result = agent.repondre(
+            "Dans quelles autres boutiques je peux le trouver ?",
+            history=history,
+        )
+
+        self.assertEqual(result.intent, Intent.STOCK_BY_PRODUCT)
+        self.assertEqual(result.status, WorkflowStatus.ANSWERED)
+        self.assertTrue(result.used_history)
+        self.assertIn("Lyon : 2 unité(s)", result.reponse)
+        self.assertIn("Paris : 1 unité(s)", result.reponse)
+        self.assertEqual(
+            data_client.calls[-1],
+            ("list_stock_by_product_id", ("304",)),
+        )
+
+    def test_liste_des_agences_est_retournee(self) -> None:
+        agent, _ = self.make_agent()
+
+        result = agent.repondre("Quelles sont les agences HBntory ?")
+
+        self.assertEqual(result.intent, Intent.BRANCH_LIST)
+        self.assertEqual(result.status, WorkflowStatus.ANSWERED)
+        self.assertIn("Lyon", result.reponse)
+        self.assertIn("Paris", result.reponse)
+
+    def test_horaires_agence_ne_declenche_pas_le_stock(self) -> None:
+        agent, data_client = self.make_agent()
+
+        result = agent.repondre(
+            "Quels sont les horaires de l'agence de Lyon ?"
+        )
+
+        self.assertEqual(result.intent, Intent.BRANCH_INFO)
+        self.assertEqual(result.status, WorkflowStatus.ANSWERED)
+        self.assertIn("L'agence Lyon existe", result.reponse)
+        self.assertIn("horaires ne sont pas renseignés", result.reponse)
+        self.assertEqual(
+            data_client.call_counts["get_stock_by_product_id"],
+            0,
         )
 
     def test_hors_scope_ne_declenche_aucun_appel_metier(self) -> None:

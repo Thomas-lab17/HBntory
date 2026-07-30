@@ -115,17 +115,21 @@ Ollama est le planificateur principal. Il doit seulement retourner :
   "intents": ["stock_lookup"],
   "product_query": "écran 27 pouces",
   "branch": "Lyon",
-  "stock_filter": null,
-  "list_all_products": false,
   "used_history": false,
   "confidence": 0.91
 }
 ```
 
-Le code rejette les intentions inconnues, les entités mal formées, les agences
-absentes de la question, les plans incohérents et les confiances trop faibles.
+Ce contrat minimal est imposé par un schéma JSON afin de rester fiable avec
+`gemma3:1b`. Le code rejette les intentions inconnues, les entités mal
+formées, les agences absentes de la question, les plans incohérents et les
+confiances trop faibles.
 La requête produit envoyée aux tools est reconstruite à partir des mots de
 l'utilisateur, jamais à partir d'un produit inventé par le modèle.
+
+Les catégories, bornes de prix, devises et agrégations sont extraites à
+nouveau par du code déterministe. La documentation canonique est
+`docs/ai_agent_architecture.md`.
 
 Sans Ollama, ou si ce plan échoue, `QueryAgent` applique ses règles de repli :
 

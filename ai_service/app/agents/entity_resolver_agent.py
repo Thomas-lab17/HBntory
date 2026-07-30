@@ -63,6 +63,7 @@ class EntityResolverAgent:
         )
 
         products = self.data_client.list_products() if needs_product else []
+        products = self._filter_products(products, state.plan)
         branches = self.data_client.list_branches() if needs_branch else []
         branch = self._resolve_branch(
             state.plan.branch or state.question,
@@ -78,11 +79,19 @@ class EntityResolverAgent:
                 product, candidates = self._resolve_product(
                     state.plan.product_query or state.question,
                     products,
-                    search_mode=state.plan.has(Intent.PRODUCT_SEARCH),
+                    search_mode=(
+                        state.plan.has(Intent.PRODUCT_SEARCH)
+                        or state.plan.aggregate_matching_products
+                    ),
                     branch_names=[
                         str(item.get("name") or "")
                         for item in branches
                     ],
+                    candidate_limit=(
+                        None
+                        if state.plan.aggregate_matching_products
+                        else self.max_candidates
+                    ),
                 )
 
         return ResolvedEntities(
@@ -116,6 +125,7 @@ class EntityResolverAgent:
         *,
         search_mode: bool,
         branch_names: list[str],
+        candidate_limit: int | None,
     ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
         raw = text.strip()
         normalized = _aliases(raw)
@@ -199,10 +209,61 @@ class EntityResolverAgent:
                 if search_mode
                 else score == best_score
             )
-        ][: self.max_candidates]
+        ]
+        if candidate_limit is not None:
+            candidates = candidates[:candidate_limit]
 
         if search_mode:
             return None, candidates
         if len(candidates) == 1:
             return candidates[0], candidates
         return None, candidates
+
+    @staticmethod
+    def _filter_products(
+        products: list[dict[str, Any]],
+        plan: Any,
+    ) -> list[dict[str, Any]]:
+        filtered: list[dict[str, Any]] = []
+        for product in products:
+            if plan.product_kind and not EntityResolverAgent._matches_kind(
+                product,
+                plan.product_kind,
+            ):
+                continue
+            value = product.get("price", product.get("prix"))
+            try:
+                price = float(value) if value is not None else None
+            except (TypeError, ValueError):
+                price = None
+            if plan.price_min is not None and (
+                price is None or price < plan.price_min
+            ):
+                continue
+            if plan.price_max is not None and (
+                price is None or price > plan.price_max
+            ):
+                continue
+            if plan.currency and str(
+                product.get("currency") or ""
+            ).upper() != plan.currency:
+                continue
+            filtered.append(product)
+        return filtered
+
+    @staticmethod
+    def _matches_kind(product: dict[str, Any], kind: str) -> bool:
+        name = _aliases(str(product.get("name") or product.get("nom") or ""))
+        category = normalize_text(str(product.get("category") or ""))
+        if kind == "laptop":
+            return (
+                "laptop" in name.split()
+                and any(token in category for token in ("laptop", "computer"))
+            )
+        tokens = {
+            "monitor": {"monitor"},
+            "keyboard": {"keyboard"},
+            "mouse": {"mouse"},
+            "headset": {"headset"},
+        }.get(kind, {kind})
+        return bool(tokens & set(name.split()))

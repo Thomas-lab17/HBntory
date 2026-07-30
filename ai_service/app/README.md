@@ -72,8 +72,10 @@ et ajoute `status`, `request_id`, `agent`, `sources`, `access`, `planning` et
 Quand il est activé, Ollama reçoit chaque question validée et la traduit en
 plan JSON structuré. Il ne répond jamais directement à l'utilisateur, ne
 décide pas des autorisations et n'accède à aucun tool. Le plan est ensuite
-validé par du code déterministe. Le contrôle d'accès déterministe précède
-toute résolution de données et est confirmé avant le tool métier.
+contraint par un schéma JSON minimal, puis validé par du code déterministe.
+Les prix, catégories et devises sont relus directement dans la question. Le
+contrôle d'accès déterministe précède toute résolution de données et est
+confirmé avant le tool métier.
 
 ```env
 AI_LLM_ENABLED=true
@@ -107,5 +109,9 @@ continue automatiquement avec le routeur déterministe. La cause est exposée
 par `planning.failure_code` sans publier le détail technique de l'exception.
 Les codes actuels couvrent notamment `llm_disabled`, `llm_unavailable`,
 `llm_model_unavailable`, `llm_invalid_response`, `llm_low_confidence`,
-`llm_invalid_intents`, `llm_ungrounded_branch`, `llm_scope_conflict` et
-`llm_security_override`.
+`llm_invalid_intents`, `llm_ungrounded_branch`,
+`llm_history_branch_conflict`, `llm_scope_conflict`,
+`llm_semantic_override` et `llm_security_override`.
+
+La documentation de référence est
+[`docs/ai_agent_architecture.md`](../../docs/ai_agent_architecture.md).

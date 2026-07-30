@@ -53,10 +53,10 @@ class OllamaQueryInterpreterTests(unittest.TestCase):
         request = urlopen.call_args.args[0]
         request_payload = json.loads(request.data.decode())
         self.assertEqual(request_payload["model"], "gemma3:1b")
-        self.assertEqual(request_payload["format"], "json")
+        self.assertEqual(request_payload["format"]["type"], "object")
         self.assertEqual(request_payload["messages"][0]["role"], "system")
-        self.assertEqual(request_payload["options"]["num_ctx"], 512)
-        self.assertEqual(request_payload["options"]["num_predict"], 64)
+        self.assertEqual(request_payload["options"]["num_ctx"], 1024)
+        self.assertEqual(request_payload["options"]["num_predict"], 80)
         self.assertEqual(urlopen.call_args.kwargs["timeout"], 12)
 
     @patch("app.ollama_client.urllib.request.urlopen")
