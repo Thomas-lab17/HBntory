@@ -1,0 +1,7 @@
+CREATE TABLE products{
+
+    id INTEGER NOT NULL PRIMARY KEY UNIQUE;
+    name STRING NOT NULL;
+    created_at TIMESTAMP NOT NULL;
+    updated_at TIMESTAMP NOT NULL;
+};
