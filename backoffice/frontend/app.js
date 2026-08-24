@@ -51,6 +51,11 @@ function showFlash(message, isError = false) {
   flash.classList.toggle("error", isError);
   flash.classList.remove("hidden");
 }
+// Libellé lisible du rôle (le rôle brut "admin"/"common" prête à confusion
+// avec les mots de passe de démonstration, qui leur sont identiques).
+function roleLabel(role) {
+  return role === "admin" ? "Administrateur" : "Utilisateur";
+}
 
 // Une déconnexion supprime aussi le token local pour éviter sa réutilisation.
 function showLogin() {
@@ -67,7 +72,7 @@ function showLogin() {
 async function showApp() {
   loginView.classList.add("hidden");
   appView.classList.remove("hidden");
-  userBadge.textContent = `${me.username} · ${me.role}` +
+  userBadge.textContent = `${me.username} · ${roleLabel(me.role)}` +
     (me.branch_name ? ` · ${me.branch_name}` : "");
   flash.classList.add("hidden");
 
@@ -178,7 +183,7 @@ async function refreshUsers() {
 
     // Badge de statut : admin / actif / supprimé.
     const statusBadge = u.role === "admin"
-      ? '<span class="badge active">admin</span>'
+      ? '<span class="badge active">administrateur</span>'
       : u.is_deleted
         ? '<span class="badge deleted">supprimé</span>'
         : '<span class="badge active">actif</span>';
