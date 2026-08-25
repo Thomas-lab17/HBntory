@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HBntory — Backoffice</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="login-view" class="center-wrap">
+      <div class="card login-card">
+        <h1>HBntory</h1>
+        <p class="subtitle">Connexion au backoffice</p>
+        <form id="login-form">
+          <label>Nom d'utilisateur
+            <input name="username" autocomplete="username" required />
+          </label>
+          <label>Mot de passe
+            <input type="password" name="password" autocomplete="current-password" required />
+          </label>
+          <button type="submit">Se connecter</button>
+          <p id="login-error" class="flash error hidden"></p>
+        </form>
+      </div>
+    </div>
+
+    <div id="app-view" class="hidden">
+      <header>
+        <span class="brand">HBntory</span>
+        <span class="muted">Backoffice</span>
+        <span id="user-badge" class="muted"></span>
+        <button id="logout-btn" class="btn-ghost btn-small">Déconnexion</button>
+      </header>
+
+      <main>
+        <p id="flash" class="flash hidden"></p>
+
+        <section id="stock-section" class="hidden">
+          <div class="card">
+            <h2 id="stock-title">Stock</h2>
+            <table>
+              <thead>
+                <tr><th>ID produit</th><th>Quantité</th></tr>
+              </thead>
+              <tbody id="stock-body"></tbody>
+            </table>
+            <p id="stock-empty" class="muted hidden">Aucun stock enregistré.</p>
+          </div>
+          <div class="row">
+            <form id="add-form" class="card form">
+              <strong>Ajouter du stock</strong>
+              <label>ID produit
+                <input name="product_id" type="number" min="1" required />
+              </label>
+              <label>Quantité
+                <input name="quantity" type="number" min="1" required />
+              </label>
+              <button type="submit" class="btn-primary">Ajouter</button>
+            </form>
+            <form id="remove-form" class="card form">
+              <strong>Retirer du stock</strong>
+              <label>ID produit
+                <input name="product_id" type="number" min="1" required />
+              </label>
+              <label>Quantité
+                <input name="quantity" type="number" min="1" required />
+              </label>
+              <button type="submit" class="btn-danger">Retirer</button>
+            </form>
+          </div>
+        </section>
+
+        <section id="users-section" class="hidden">
+          <div class="card">
+            <h2>Utilisateurs</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th><th>Nom d'utilisateur</th><th>Branche</th><th>Statut</th><th></th>
+                </tr>
+              </thead>
+              <tbody id="users-body"></tbody>
+            </table>
+          </div>
+
+          <div class="row">
+            <form id="create-user-form" class="card form">
+              <strong>Créer un utilisateur</strong>
+              <label>Nom d'utilisateur
+                <input name="username" required />
+              </label>
+              <label>Mot de passe
+                <input name="password" type="password" required />
+              </label>
+              <label>Branche
+                <select name="branch_id" required></select>
+              </label>
+              <button type="submit" class="btn-primary">Créer</button>
+            </form>
+
+            <form id="edit-user-form" class="card form hidden">
+              <strong>Modifier l'utilisateur #<span id="edit-user-id"></span></strong>
+              <label>Nom d'utilisateur
+                <input name="username" />
+              </label>
+              <label>Nouveau mot de passe (laisser vide pour conserver)
+                <input name="password" type="password" placeholder="••••••••" />
+              </label>
+              <label>Branche
+                <select name="branch_id"></select>
+              </label>
+              <div class="btn-row">
+                <button type="submit" class="btn-primary">Enregistrer</button>
+                <button type="button" id="edit-cancel" class="btn-ghost">Annuler</button>
+              </div>
+            </form>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,29 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Local runtime data
+instance/
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# Secrets and credentials
+.env
+.env.*
+!.env.example
+*.secret
+*.key
+*.pem
+*.p12
+*.pfx
+secrets/
+credentials/
+
+# Local tooling
+node_modules/
+.DS_Store
+.vscode/
+SESSION_HANDOFF.md
