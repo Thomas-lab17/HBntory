@@ -1,6 +1,7 @@
 # Backoffice API — FastAPI, SQLAlchemy-backed, JWT auth.
-# Route contract mirrors Thomas's Flask API so the backoffice frontend
-# works unchanged: /api/login, /api/me, /api/branches, /api/stock*, /api/users*.
+# The backoffice frontend (backoffice/frontend, served by nginx) calls these
+# routes: /api/login, /api/me, /api/branches, /api/stock*, /api/users*,
+# /api/products*.
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -33,7 +34,7 @@ class UserOut(BaseModel):
 
 
 def serialize_user(user: models.User) -> UserOut:
-    """Format a user for JSON responses (matches Thomas's contract)."""
+    """Format a user for JSON responses."""
     return UserOut(
         id=user.id,
         username=user.username,
@@ -81,7 +82,7 @@ class StockOut(BaseModel):
 
 
 def serialize_stock(stock: models.Stock) -> StockOut:
-    """Format a stock row for JSON responses (matches Thomas's contract)."""
+    """Format a stock row for JSON responses."""
     return StockOut(id=stock.id, product_id=stock.product_id, quantity=stock.quantity)
 
 
@@ -108,8 +109,23 @@ def get_stock(user: models.User = Depends(require_common), db: Session = Depends
 
 @app.post("/api/stock/add", status_code=201)
 def add_stock(body: StockIn, user: models.User = Depends(require_common), db: Session = Depends(get_db)) -> dict:
-    """Add units of a product to the current user's branch (merges if it exists)."""
+    """Add units of a product to the current user's branch (merges if it exists).
+
+    The product must exist in the external catalog (checked through the MCP
+    bridge): stock is only recorded for real products, never invented ones.
+    """
     product_id, quantity = parse_positive(body)
+    product = product_client.get_product(product_id)
+    if not product.get("success"):
+        if product.get("error_type") == "not_found":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Produit {product_id} inconnu dans le catalogue",
+            )
+        raise HTTPException(
+            status_code=503,
+            detail="Catalogue indisponible : impossible de vérifier le produit",
+        )
     stock = db.scalar(
         select(models.Stock).where(
             models.Stock.branch_id == user.branch_id, models.Stock.product_id == product_id
@@ -283,3 +299,31 @@ def stock_by_product(
             "message": product.get("message", "Product not found"),
         }
     return {"success": True, "product_id": product_id, "stock": []}
+
+
+@app.get("/api/stock/branch/{branch_name}")
+def stock_by_branch(
+    branch_name: str,
+    _guard: None = Depends(require_service_key),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Read-only stock of one branch (internal AI endpoint)."""
+    branch = db.scalar(
+        select(models.Branch).where(models.Branch.name.ilike(branch_name))
+    )
+    if branch is None:
+        return {
+            "success": False,
+            "error_type": "not_found",
+            "message": f"Branch '{branch_name}' not found",
+        }
+    rows = db.scalars(
+        select(models.Stock)
+        .where(models.Stock.branch_id == branch.id)
+        .order_by(models.Stock.product_id)
+    ).all()
+    return {
+        "success": True,
+        "branch": branch.name,
+        "stock": [{"product_id": s.product_id, "quantity": s.quantity} for s in rows],
+    }

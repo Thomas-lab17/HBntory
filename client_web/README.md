@@ -1,75 +1,73 @@
 # HBntory — Client Web
 
-Interface web publique du projet HBntory : une page où des visiteurs
-**anonymes** posent des questions en langage naturel sur les produits et le
-stock. Pas de connexion, pas d'historique : chaque question est indépendante.
+Public web interface of the HBntory project: a page where **anonymous**
+visitors ask natural-language questions about products and stock. No login,
+no history: each question is independent.
 
-## État actuel
+## Current state
 
-**Interface seule, sans backend.** La page est entièrement statique et ne
-fait aucun appel réseau. Envoyer une question affiche la question dans la
-conversation puis une réponse d'attente locale indiquant que le service de
-réponses n'est pas encore connecté.
+The page is **connected to the AI Query Service** (`ai_service`, port
+8100). Submitting a question sends `POST /query` and displays the answer in
+the conversation, with loading feedback (`…`) while waiting and a clear
+error message if the service fails.
 
-Aucune dépendance, aucun build : HTML + CSS + JavaScript vanilla.
+No dependencies, no build: vanilla HTML + CSS + JavaScript.
 
-## Fichiers
+## Files
 
-| Fichier | Rôle |
+| File | Role |
 |---|---|
-| `index.html` | Structure de la page : en-tête, fil de discussion (`#messages`), formulaire de question (`#question-form`). |
-| `style.css` | Style minimal (bulles utilisateur / assistant, bandeau d'erreur). |
-| `app.js` | Comportement : soumission du formulaire, ajout des bulles, message d'attente. Point d'intégration futur marqué en commentaire. |
+| `index.html` | Page structure: header, conversation (`#messages`), question form (`#question-form`) |
+| `style.css` | Minimal styling (user / assistant bubbles, error banner) |
+| `app.js` | Submits the question to `http://localhost:8100/query`, renders the answer or an error |
 
-Ou via Docker Compose (depuis la racine du projet) :
+## Run
+
+Via Docker Compose (from the project root):
 
 ```bash
-docker compose up -d web_client
-# puis ouvrir http://localhost:8080
+docker compose up --build
+# then open http://localhost:8080
 ```
 
-Le service `web_client` sert les fichiers statiques avec nginx
-(`./web_client` monté en lecture seule dans le conteneur).
+The `client_web` service serves the static files with nginx
+(`./client_web` mounted read-only).
 
-## Fonctionnement
+## How it works
 
-1. Le visiteur tape une question et valide (Entrée ou bouton « Envoyer »).
-2. `app.js` ajoute la question en bulle utilisateur.
-3. Pas de service branché pour l'instant : une bulle d'attente s'affiche.
+1. The visitor types a question and submits it.
+2. `app.js` adds the question as a user bubble and disables the form.
+3. It sends `POST http://localhost:8100/query` with `{"question": "..."}`.
+4. The answer is displayed as an assistant bubble; on failure the error is
+   shown in place.
 
-Chaque question est traitée indépendamment ; rien n'est stocké (ni côté
-page ni côté serveur). Recharger la page remet la conversation à zéro.
+Each question is handled independently; nothing is stored (neither on the
+page nor on the server). Reloading the page resets the conversation.
 
-## Endpoints
+## Example questions
 
-**Aucun pour l'instant.** La page n'appelle aucun endpoint et ne reçoit
-aucune donnée externe.
+- "Give me details about product HB-LAP-1001"
+- "Which branch has stock of HB-LAP-1001?"
+- "What products can I find in Lyon?"
+- "Can I buy 2 of HB-LAP-1001 and 3 of HB-MON-2101 in one branch?"
 
-## Intégration future (prévue, non implémentée)
-
-- Le client enverra chaque question en une requête **POST** au futur
-  service de réponses IA (service indépendant du Backoffice) et affichera
-  la réponse reçue. Le point d'appel est marqué dans `app.js`.
-- D'après le cahier des charges du projet, ce service répondra grâce à un
-  agent IA s'appuyant sur :
-  - les données produits, via l'**API produits externe** (à travers le
-    serveur MCP, `product_mcp_server/`) ;
-  - les données de stock, via la **base de données relationnelle**.
-- Rien de tout cela n'est branché pour l'instant : ce document décrit
-  l'état actuel uniquement.
+The AI service answers using real product data (external Product API via
+the MCP server) and real stock data (Backoffice API), and never invents
+information.
 
 ## Relations
 
 ```text
-Visiteur anonyme
-    │  (navigateur)
+Anonymous visitor
+    │  (browser)
     ▼
-web_client/  (page statique, sans serveur propre)
-    │  ── à venir : POST question ──▶  Service IA (indépendant du Backoffice)
-                                        │
-                                        ├─▶ produits : API externe via MCP
-                                        └─▶ stock : base relationnelle
+client_web/  (static page, no own server)
+    │  POST /query
+    ▼
+ai_service  (independent of the Backoffice)
+    ├─ products: external Product API via product_mcp_server
+    └─ stock: Backoffice API (internal endpoint)
 ```
 
-Le client web ne partage aucun code avec le Backoffice et ne le contacte
-pas directement.
+The client web shares no code with the Backoffice and does not contact it
+directly.

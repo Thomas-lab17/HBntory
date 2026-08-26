@@ -27,3 +27,12 @@ node_modules/
 .DS_Store
 .vscode/
 SESSION_HANDOFF.md
+
+# External dependency (cloned separately, not part of the project)
+hbntory-products-api-main/
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/

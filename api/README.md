@@ -2,16 +2,17 @@
 
 SQLAlchemy-backed Backoffice API. It provides authentication, stock
 management (common users) and user management (admin) over a **real
-relational database**. The route contract mirrors Thomas's Flask backoffice
-(`/api/*`), so the backoffice frontend works against this service unchanged.
+relational database** (SQLite by default). The frontend lives in
+`backoffice/frontend` and is served by an nginx container
+(`backoffice-web`) that proxies `/api/*` to this service.
 
 Product data is **never stored locally** — it comes from the external
-Product API through Tom's MCP server.
+Product API through the MCP server (`product_mcp_server`).
 
 ## Architecture
 
 ```
-Browser (Thomas's frontend)
+Browser (backoffice/frontend via nginx)
    │  /api/* JSON + Bearer token
    ▼
 ┌───────────────────────┐   SQLAlchemy   ┌──────────────┐
@@ -22,13 +23,14 @@ Browser (Thomas's frontend)
 └──────────┬────────────┘
            │ product info (list/detail)
            ▼
-   Tom's MCP server ──► external Product API
+   product_mcp_server ──► external Product API
 ```
 
 Two kinds of client talk to this service:
 
-- **The backoffice frontend** (Thomas's) — authenticated users.
-- **The AI Query Service** (your `ai` branch) — internal read-only stock
+- **The backoffice frontend** (served by `backoffice-web`) — authenticated
+  users.
+- **The AI Query Service** (`ai_service`) — internal read-only stock
   queries with a shared service key.
 
 ## How it works
@@ -56,12 +58,16 @@ impractical.
 - Rules enforced by both the API and the DB:
   - quantity must be a positive integer,
   - stock can never go below zero (`CHECK (quantity >= 0)` in the schema),
-  - one row per (branch, product) — adding to an existing product merges.
+  - one row per (branch, product) — adding to an existing product merges,
+  - **adding stock validates the product exists in the external catalog**
+    (through the MCP bridge): unknown ids are refused with a 400, and an
+    unreachable catalog returns a clear 503.
 
 ### Product data
-
-`GET /api/products` and `GET /api/products/{id}` proxy to **Tom's MCP
-server**, which bridges the external Product API. The local database only
+the **MCP server**
+(`product_mcp_server`), which bridges the external Product API. The local
+database only stores `product_id` strings — never names, prices, or
+local database only
 stores `product_id` strings — never names, prices, or descriptions.
 
 ### Internal endpoint for the AI service
@@ -84,6 +90,7 @@ Soft delete: users keep their row with `is_deleted = True`; they can no
 longer log in, and existing stock is untouched.
 
 ## Run
+Locally:
 
 ```bash
 cd api
@@ -92,8 +99,14 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/uvicorn app.main:app --port 5000
 ```
 
+Or in Docker (as part of `docker compose up`): the `api` service builds
+from this folder, seeds the database on first boot, and persists the SQLite
+file on the `backoffice-data` volume.
+
 Env vars: `SECRET_KEY` (JWT signing, default `dev-secret-key`),
 `SERVICE_API_KEY` (internal endpoints, default `dev-service-key`),
+`MCP_SERVER_URL` (default `http://localhost:8002`),
+`DATABASE_URL` (default `sqlite:///./hbntory.dbdev-service-key`),
 `MCP_SERVER_URL` (default `http://localhost:8002`).
 Default credentials after init: `admin` / `admin` (override with
 `ADMIN_PASSWORD` when running `init_db`).
@@ -112,9 +125,23 @@ Default credentials after init: `admin` / `admin` (override with
 | POST | `/api/users` | admin — creates common users (role forced) |
 | PATCH | `/api/users/{id}` | admin |
 | DELETE | `/api/users/{id}` | admin — soft delete |
+
+## Tests
+
+Automated tests cover authentication, authorization and the stock rules:
+
+```bash
+cd api
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
+The tests use a throwaway SQLite database and stub the external Product API
+(`product_client`), so no external service is needed.
 | GET | `/api/products` | any authenticated user — via MCP bridge |
 | GET | `/api/products/{id}` | any authenticated user — via MCP bridge |
 | GET | `/api/stock/product/{id}` | `X-API-Key: SERVICE_API_KEY` — internal, for the AI service |
+| GET | `/api/stock/branch/{name}` | `X-API-Key: SERVICE_API_KEY` — internal, for the AI service |
 
 ## Design decisions
 
@@ -124,5 +151,5 @@ Default credentials after init: `admin` / `admin` (override with
   enforced client-side; revocation handled by re-checking the user in the
   DB on every request.
 - **Product info via the MCP bridge** instead of a second direct client:
-  one integration point for the external Product API (Tom's), reused by
-  both the backoffice and the AI service.
+  one integration point for the external Product API
+  (`product_mcp_server`), reused by both the backoffice and the AI service.

@@ -38,19 +38,34 @@
         <section id="stock-section" class="hidden">
           <div class="card">
             <h2 id="stock-title">Stock</h2>
-            <table>
-              <thead>
-                <tr><th>ID produit</th><th>Quantité</th></tr>
-              </thead>
-              <tbody id="stock-body"></tbody>
-            </table>
-            <p id="stock-empty" class="muted hidden">Aucun stock enregistré.</p>
+            <div class="stock-groups">
+              <div class="stock-group">
+                <h3>En stock <span id="in-stock-count" class="muted"></span></h3>
+                <table>
+                  <thead>
+                    <tr><th>Produit</th><th>Quantité</th></tr>
+                  </thead>
+                  <tbody id="in-stock-body"></tbody>
+                </table>
+                <p id="in-stock-empty" class="muted hidden">Aucun produit en stock.</p>
+              </div>
+              <div class="stock-group">
+                <h3>Rupture de stock <span id="out-stock-count" class="muted"></span></h3>
+                <table>
+                  <thead>
+                    <tr><th>Produit</th></tr>
+                  </thead>
+                  <tbody id="out-stock-body"></tbody>
+                </table>
+                <p id="out-stock-empty" class="muted hidden">Aucun produit en rupture.</p>
+              </div>
+            </div>
           </div>
           <div class="row">
             <form id="add-form" class="card form">
               <strong>Ajouter du stock</strong>
-              <label>ID produit
-                <input name="product_id" type="number" min="1" required />
+              <label>Produit
+                <select name="product_id" required></select>
               </label>
               <label>Quantité
                 <input name="quantity" type="number" min="1" required />
@@ -59,8 +74,8 @@
             </form>
             <form id="remove-form" class="card form">
               <strong>Retirer du stock</strong>
-              <label>ID produit
-                <input name="product_id" type="number" min="1" required />
+              <label>Produit
+                <select name="product_id" required></select>
               </label>
               <label>Quantité
                 <input name="quantity" type="number" min="1" required />

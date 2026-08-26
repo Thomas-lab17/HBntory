@@ -36,3 +36,21 @@ def stock_by_product(product_id: str, branch: str | None = None) -> dict:
             "stock": [s for s in data.get("stock", []) if s["branch"].lower() == branch.lower()],
         }
     return data
+
+
+def stock_by_branch(branch: str) -> dict:
+    """Return the full stock of one named branch in a single call."""
+    url = f"{BASE}/api/stock/branch/{urllib.parse.quote(branch, safe='')}"
+    req = urllib.request.Request(
+        url,
+        headers={"X-API-Key": API_KEY, "User-Agent": "hbntory-ai/0.1"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        return {
+            "success": False,
+            "error_type": "unavailable",
+            "message": "Stock information is currently unavailable.",
+        }

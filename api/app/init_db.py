@@ -15,10 +15,10 @@ SAMPLE_BRANCHES = [
     {"name": "Lyon", "address": "4 Place Bellecour"},
 ]
 # Sample stock keyed by branch name -> {product_id: quantity}.
-# Product ids match the external Product API catalog (p1/p2/p3 in the mock).
+# Product ids are SKUs from the external Product API catalog (e.g. HB-LAP-1001).
 SAMPLE_STOCK = {
-    "Paris": {"p1": 10, "p2": 5},
-    "Lyon": {"p1": 7, "p3": 12},
+    "Paris": {"HB-LAP-1001": 10, "HB-KBD-4101": 5},
+    "Lyon": {"HB-LAP-1001": 7, "HB-MON-2101": 12},
 }
 
 

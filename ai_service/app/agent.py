@@ -58,6 +58,8 @@ def _execute(tool_call: dict) -> tuple[str, dict]:
         result = product_client.get_product(args.get("product_id", ""))
     elif name == "get_stock":
         result = stock_client.stock_by_product(args.get("product_id", ""), args.get("branch"))
+    elif name == "get_branch_stock":
+        result = stock_client.stock_by_branch(args.get("branch", ""))
     else:
         result = {"success": False, "message": f"Unknown tool: {name}"}
     print(f"[tool] {name}({json.dumps(args)}) -> {json.dumps(result)[:200]}", flush=True)
@@ -71,6 +73,12 @@ def answer(question: str) -> dict:
         {"role": "user", "content": question},
     ]
     calls: list[str] = []
+    if not API_KEY:
+        return {
+            "answer": "Le service IA n'est pas configuré : la clé API "
+                      "(GROQ_API_KEY) est manquante.",
+            "tool_calls": calls,
+        }
     try:
         for _ in range(MAX_STEPS):
             message = _chat(messages)
@@ -89,7 +97,13 @@ def answer(question: str) -> dict:
                     }
                 )
     except urllib.error.HTTPError as exc:
-        # Provider outage or rate limit: never crash, tell the user clearly.
+        # 401/403 = clé API absente ou invalide ; le reste = panne ou limite.
+        if exc.code in (401, 403):
+            return {
+                "answer": "Le service IA n'est pas autorisé : vérifiez la clé "
+                          "API (GROQ_API_KEY).",
+                "tool_calls": calls,
+            }
         return {
             "answer": "Le service de réponse est temporairement indisponible "
                       f"(erreur {exc.code}). Réessayez dans quelques instants.",

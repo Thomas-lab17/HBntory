@@ -13,7 +13,7 @@ User question
    ▼
 ┌────────────────────────────┐     tools      ┌─────────────────────────────┐
 │  agent loop (app/agent.py) │ ─────────────► │  list_products / get_product │
-│  system prompt + question  │                │  → Tom's MCP server (HTTP)   │
+│  system prompt + question  │                │  → product_mcp_server (HTTP) │
 │  Groq chat completions     │                └─────────────────────────────┘
 │  with tools                │     tools      ┌─────────────────────────────┐
 │                            │ ─────────────► │  get_stock                  │
@@ -39,11 +39,12 @@ so you can observe exactly what the agent asked for during a question.
 
 | Tool | Backend | Purpose |
 |---|---|---|
-| `list_products` | Tom's MCP server (`MCP_SERVER_URL`) | Full product catalog |
-| `get_product` | Tom's MCP server | Details of one product |
+| `list_products` | MCP server (`MCP_SERVER_URL`) | Full product catalog |
+| `get_product` | MCP server | Details of one product |
 | `get_stock` | Backoffice API (`BACKOFFICE_API_URL`) | Stock quantity per branch |
+| `get_branch_stock` | Backoffice API | Full stock of one branch (single call) |
 
-Product data always comes from the external Product API **through Tom's MCP
+Product data always comes from the external Product API **through the MCP
 server** — the AI service never stores product metadata. Stock comes from the
 Backoffice API's internal endpoint `/api/stock/product/{id}` (authenticated
 with the shared `SERVICE_API_KEY`).
@@ -54,7 +55,7 @@ The system prompt forbids inventing data: if a tool fails or has no
 information, the model must say the information is unavailable. Verified
 behaviour:
 
-- `"Which branch has stock of p1?"` → real branches and quantities.
+- `"Which branch has stock of HB-LAP-1001?"` → real branches and quantities.
 - `"Where can I buy zzz9?"` → clear "not found" (the MCP/API returns 404).
 - If the Backoffice API is down, stock questions answer "stock information
   is currently unavailable".
@@ -70,10 +71,10 @@ does not need — REST keeps the client and server stateless and simple.
 
 ## Supported question types
 
-- Product details: *"Tell me about product p1"*
-- Where a product is available: *"Which branch has stock of p1?"*
+- Product details: *"Tell me about product HB-LAP-1001"*
+- Where a product is available: *"Which branch has stock of HB-LAP-1001?"*
 - What a branch carries: *"What products can I find in Lyon?"*
-- Shopping-list recommendation: *"Can I buy 2 of p1 and 3 of p3 in one branch?"*
+- Shopping-list recommendation: *"Can I buy 2 of HB-LAP-1001 and 3 of HB-MON-2101 in one branch?"*
 
 Out-of-scope questions (weather, etc.) get a clear "I can't help with that"
 answer.
@@ -81,8 +82,8 @@ answer.
 ## Run
 
 ```bash
-# 1. Product MCP server (Tom's service, port 8002) — see product_mcp_server/
-# 2. Backoffice API (your api branch, port 5000) — see api/README.md
+# 1. MCP server (product_mcp_server, port 8002) — see product_mcp_server/
+# 2. Backoffice API (api/, port 5000) — see api/README.md
 # 3. This service
 cd ai_service
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
@@ -95,7 +96,7 @@ Env vars:
 |---|---|---|
 | `GROQ_API_KEY` | — (required) | Groq console key |
 | `GROQ_MODEL` | `qwen/qwen3.6-27b` | LLM model (supports tool calling) |
-| `MCP_SERVER_URL` | `http://localhost:8002` | Tom's Product MCP bridge |
+| `MCP_SERVER_URL` | `http://localhost:8002` | Product MCP bridge |
 | `BACKOFFICE_API_URL` | `http://localhost:5000` | Backoffice API |
 | `SERVICE_API_KEY` | `dev-service-key` | Must match the Backoffice API |
 

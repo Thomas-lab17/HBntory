@@ -1,4 +1,4 @@
-# Tool schemas exposed to the agent (OpenAI-style JSON, as Ollama expects).
+# Tool schemas exposed to the agent (OpenAI-style JSON for Groq).
 LIST_PRODUCTS = {
     "type": "function",
     "function": {
@@ -31,8 +31,8 @@ GET_STOCK = {
     "function": {
         "name": "get_stock",
         "description": (
-            "Get the stock quantity of a product, optionally filtered to one branch. "
-            "Branch names are things like 'Downtown' or 'Airport'."
+            "Get the stock quantity of a product across branches, optionally "
+            "filtered to one branch. Real branch names are 'Paris' and 'Lyon'."
         ),
         "parameters": {
             "type": "object",
@@ -51,4 +51,26 @@ GET_STOCK = {
     },
 }
 
-TOOLS = [LIST_PRODUCTS, GET_PRODUCT, GET_STOCK]
+GET_BRANCH_STOCK = {
+    "type": "function",
+    "function": {
+        "name": "get_branch_stock",
+        "description": (
+            "Get the full stock of one branch: the list of products and their "
+            "quantities available in that branch, in a single call. Real branch "
+            "names are 'Paris' and 'Lyon'."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "branch": {
+                    "type": "string",
+                    "description": "Branch name (e.g. 'Paris' or 'Lyon')",
+                },
+            },
+            "required": ["branch"],
+        },
+    },
+}
+
+TOOLS = [LIST_PRODUCTS, GET_PRODUCT, GET_STOCK, GET_BRANCH_STOCK]

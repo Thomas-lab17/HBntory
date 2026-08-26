@@ -3,6 +3,13 @@
 An MCP server that bridges an AI agent to an external **Product API**,
 exposing exactly two tools: listing products and getting product details.
 
+> **External API:** the real catalog is the HBntory External Product API
+> (run with its own `docker compose`, published on `http://localhost:5001`,
+> contract `GET /api/v1/products`, `GET /api/v1/products/{id_or_sku}`).
+> The bundled `mock_api.py` is a legacy stand-in for quick offline checks;
+> note it serves `/products` (no `/api/v1` prefix), so it does **not**
+> match the real client contract — use the real API for integration tests.
+
 ## Files
 
 | File                | Purpose |
@@ -88,12 +95,16 @@ python server.py          # starts the MCP server (stdio transport)
 mcp dev server.py
 ```
 
-Point it at your real Product API:
+Point it at the real external Product API (e.g. the HBntory catalog on
+`http://localhost:5001`, or `http://external-products-api:5000` inside the
+Compose network):
 ```bash
-export PRODUCT_API_BASE_URL="https://products.example.com/api"
-export PRODUCT_API_KEY="..."   # optional, sent as Bearer token
+export PRODUCT_API_BASE_URL="http://localhost:5001"
 python server.py
 ```
+The product client requests `/api/v1/products` and `/api/v1/products/{id}`
+— exactly the routes of the provided external API. `PRODUCT_API_KEY` is
+optional and sent as a Bearer token when set.
 
 ## 4. Manual test evidence
 
@@ -101,11 +112,19 @@ Tested end-to-end against `mock_api.py`, a minimal local stand-in for the
 Product API implementing `GET /products`, `GET /products/{id}` (200), and
 `GET /products/{id}` (404 for unknown ids).
 
-**Setup**
+**Setup** (against the real external Product API on port 5001):
 ```bash
-python mock_api.py &          # mock Product API on http://localhost:8000
+# start the external API first (from hbntory-products-api-main/):
+#   docker compose up --build
+export PRODUCT_API_BASE_URL="http://localhost:5001"
 python test_manual.py         # runs all 4 scenarios against product_client.py and product_tools.py
 ```
+
+> The captured output below was produced against the older `mock_api.py`
+> stand-in (`/products`, port 8000). The four scenarios are identical
+> against the real API; only the base URL and the route prefix differ, and
+> the real catalog returns real product names instead of the mock's
+> `p1/p2/p3` entries.
 
 **Actual captured output:**
 

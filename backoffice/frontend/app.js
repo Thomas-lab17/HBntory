@@ -14,8 +14,12 @@ const logoutBtn = document.getElementById("logout-btn");
 const flash = document.getElementById("flash");
 
 const stockSection = document.getElementById("stock-section");
-const stockBody = document.getElementById("stock-body");
-const stockEmpty = document.getElementById("stock-empty");
+const inStockBody = document.getElementById("in-stock-body");
+const inStockEmpty = document.getElementById("in-stock-empty");
+const outStockBody = document.getElementById("out-stock-body");
+const outStockEmpty = document.getElementById("out-stock-empty");
+const inStockCount = document.getElementById("in-stock-count");
+const outStockCount = document.getElementById("out-stock-count");
 const addForm = document.getElementById("add-form");
 const removeForm = document.getElementById("remove-form");
 
@@ -28,6 +32,8 @@ const editCancelBtn = document.getElementById("edit-cancel");
 // Ces valeurs sont conservées pendant la session et servent à choisir la vue.
 let me = null;
 let branches = [];
+let products = [];   // catalogue produit (API externe, via /api/products)
+let stockRows = [];  // dernier stock lu pour la branche (alimente "Retirer")
 let token = localStorage.getItem("hbntory_token") || null;
 
 // Toutes les requêtes passent ici afin d'ajouter le token et de centraliser
@@ -84,6 +90,8 @@ async function showApp() {
   if (isCommon) {
     document.getElementById("stock-title").textContent =
       `Stock — ${me.branch_name}`;
+    await loadProducts();
+    fillAddSelect();
     await refreshStock();
   }
   if (isAdmin) {
@@ -92,17 +100,105 @@ async function showApp() {
 }
 
 // ---- Stock de la branche de l'utilisateur connecté ----
+// Le catalogue provient de l'API produit externe (via /api/products) : il
+// sert à afficher le nom d'un produit et à alimenter le sélecteur.
+async function loadProducts() {
+  try {
+    const data = await api("/api/products");
+    products = data.products || [];
+  } catch {
+    products = []; // catalogue indisponible : on reste sur les ids bruts
+  }
+}
+
+function productLabel(productId) {
+  const p = products.find(
+    (p) => p.sku === productId || String(p.id) === productId
+  );
+  return p ? `${p.name} (${p.sku})` : productId;
+}
+
+function _placeholderOption() {
+  const opt = document.createElement("option");
+  opt.value = "";
+  opt.textContent = "— Choisir un produit —";
+  opt.selected = true;
+  return opt;
+}
+
+// "Ajouter" propose tout le catalogue.
+function fillAddSelect() {
+  const sel = addForm.elements.product_id;
+  sel.innerHTML = "";
+  sel.appendChild(_placeholderOption());
+  for (const p of products) {
+    const opt = document.createElement("option");
+    opt.value = p.sku;
+    opt.textContent = `${p.name} (${p.sku})`;
+    sel.appendChild(opt);
+  }
+}
+
+// "Retirer" ne propose que les produits actuellement en stock.
+function fillRemoveSelect() {
+  const sel = removeForm.elements.product_id;
+  sel.innerHTML = "";
+  sel.appendChild(_placeholderOption());
+  for (const s of stockRows) {
+    if (s.quantity <= 0) continue;
+    const p = products.find((prod) => prod.sku === s.product_id);
+    const opt = document.createElement("option");
+    opt.value = s.product_id;
+    opt.textContent = p ? `${p.name} (${p.sku})` : s.product_id;
+    sel.appendChild(opt);
+  }
+}
+
 async function refreshStock() {
   const data = await api("/api/stock");
-  stockBody.innerHTML = "";
-  stockEmpty.classList.toggle(
-    "hidden",
-    data.stock.length > 0
-  );
-  for (const item of data.stock) {
+  stockRows = data.stock;
+  const quantities = {};
+  for (const s of stockRows) {
+    quantities[s.product_id] = s.quantity;
+  }
+
+  // Une ligne par produit du catalogue, avec la quantité de la branche
+  // (0 si le produit n'y est pas présent).
+  const rows = products.map((p) => ({
+    label: `${p.name} (${p.sku})`,
+    sku: p.sku,
+    quantity: quantities[p.sku] ?? 0,
+  }));
+  // Lignes de stock absentes du catalogue : on les conserve quand même.
+  for (const s of stockRows) {
+    if (!products.some((p) => p.sku === s.product_id)) {
+      rows.push({ label: s.product_id, sku: s.product_id, quantity: s.quantity });
+    }
+  }
+  rows.sort((a, b) => a.label.localeCompare(b.label));
+
+  const inStock = rows.filter((r) => r.quantity > 0);
+  const outStock = rows.filter((r) => r.quantity === 0);
+
+  renderStockRows(inStockBody, inStock, true);
+  renderStockRows(outStockBody, outStock, false);
+  inStockEmpty.classList.toggle("hidden", inStock.length > 0);
+  outStockEmpty.classList.toggle("hidden", outStock.length > 0);
+  inStockCount.textContent = `(${inStock.length})`;
+  outStockCount.textContent = `(${outStock.length})`;
+
+  // "Retirer" ne propose que les produits actuellement en stock.
+  fillRemoveSelect();
+}
+
+function renderStockRows(tbody, rows, withQuantity) {
+  tbody.innerHTML = "";
+  for (const r of rows) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${item.product_id}</td><td>${item.quantity}</td>`;
-    stockBody.appendChild(tr);
+    tr.innerHTML = withQuantity
+      ? `<td>${r.label}</td><td>${r.quantity}</td>`
+      : `<td>${r.label}</td>`;
+    tbody.appendChild(tr);
   }
 }
 
@@ -114,12 +210,12 @@ addForm.addEventListener("submit", async (e) => {
     const data = await api("/api/stock/add", {
       method: "POST",
       body: JSON.stringify({
-        product_id: Number(fd.get("product_id")),
+        product_id: fd.get("product_id"),
         quantity: Number(fd.get("quantity")),
       }),
     });
     addForm.reset();
-    showFlash(`Stock ajouté : le produit ${data.stock.product_id} passe à ${data.stock.quantity} unité(s).`);
+    showFlash(`Stock ajouté : ${productLabel(data.stock.product_id)} passe à ${data.stock.quantity} unité(s).`);
     await refreshStock();
   } catch (err) {
     showFlash(err.message, true);
@@ -134,12 +230,12 @@ removeForm.addEventListener("submit", async (e) => {
     const data = await api("/api/stock/remove", {
       method: "POST",
       body: JSON.stringify({
-        product_id: Number(fd.get("product_id")),
+        product_id: fd.get("product_id"),
         quantity: Number(fd.get("quantity")),
       }),
     });
     removeForm.reset();
-    showFlash(`Stock retiré : le produit ${data.stock.product_id} passe à ${data.stock.quantity} unité(s).`);
+    showFlash(`Stock retiré : ${productLabel(data.stock.product_id)} passe à ${data.stock.quantity} unité(s).`);
     await refreshStock();
   } catch (err) {
     showFlash(err.message, true);
