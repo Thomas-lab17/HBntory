@@ -118,6 +118,7 @@ Default credentials after init: `admin` / `admin` (override with
 | POST | `/api/login` | public — returns Bearer token |
 | GET | `/api/me` | any authenticated user |
 | GET | `/api/branches` | any authenticated user |
+| POST | `/api/branches` | admin — creates a branch (unique name) |
 | GET | `/api/stock` | common user — their branch only |
 | POST | `/api/stock/add` | common user — their branch |
 | POST | `/api/stock/remove` | common user — their branch |

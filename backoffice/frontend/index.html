@@ -131,6 +131,31 @@
             </form>
           </div>
         </section>
+
+        <section id="branches-section" class="hidden">
+          <div class="card">
+            <h2>Branches</h2>
+            <table>
+              <thead>
+                <tr><th>Nom</th><th>Adresse</th></tr>
+              </thead>
+              <tbody id="branches-body"></tbody>
+            </table>
+            <p id="branches-empty" class="muted hidden">Aucune branche enregistrée.</p>
+          </div>
+          <div class="row">
+            <form id="add-branch-form" class="card form">
+              <strong>Ajouter une branche</strong>
+              <label>Nom
+                <input name="name" placeholder="ex. Marseille" required />
+              </label>
+              <label>Adresse
+                <input name="address" placeholder="ex. 5 rue de la République" />
+              </label>
+              <button type="submit" class="btn-primary">Ajouter</button>
+            </form>
+          </div>
+        </section>
       </main>
     </div>
 

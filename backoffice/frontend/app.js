@@ -29,6 +29,11 @@ const createUserForm = document.getElementById("create-user-form");
 const editUserForm = document.getElementById("edit-user-form");
 const editCancelBtn = document.getElementById("edit-cancel");
 
+const branchesSection = document.getElementById("branches-section");
+const branchesBody = document.getElementById("branches-body");
+const branchesEmpty = document.getElementById("branches-empty");
+const addBranchForm = document.getElementById("add-branch-form");
+
 // Ces valeurs sont conservées pendant la session et servent à choisir la vue.
 let me = null;
 let branches = [];
@@ -86,6 +91,7 @@ async function showApp() {
   const isAdmin = me.role === "admin";
   stockSection.classList.toggle("hidden", !isCommon);
   usersSection.classList.toggle("hidden", !isAdmin);
+  branchesSection.classList.toggle("hidden", !isAdmin);
 
   if (isCommon) {
     document.getElementById("stock-title").textContent =
@@ -266,7 +272,38 @@ async function loadBranches() {
   const data = await api("/api/branches");
   branches = data.branches;
   fillBranchSelect(createUserForm.elements.branch_id, null, false);
+  renderBranches();
 }
+
+function renderBranches() {
+  branchesBody.innerHTML = "";
+  branchesEmpty.classList.toggle("hidden", branches.length > 0);
+  for (const b of branches) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${b.name}</td><td>${b.address ?? "—"}</td>`;
+    branchesBody.appendChild(tr);
+  }
+}
+
+// L'admin peut créer de nouvelles branches (noms de villes, etc.).
+addBranchForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const fd = new FormData(addBranchForm);
+  try {
+    const data = await api("/api/branches", {
+      method: "POST",
+      body: JSON.stringify({
+        name: fd.get("name"),
+        address: fd.get("address") || null,
+      }),
+    });
+    addBranchForm.reset();
+    showFlash(`Branche « ${data.branch.name} » créée.`);
+    await loadBranches();
+  } catch (err) {
+    showFlash(err.message, true);
+  }
+});
 
 // Reconstruit le tableau afin d'afficher immédiatement chaque modification.
 async function refreshUsers() {

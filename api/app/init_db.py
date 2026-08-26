@@ -13,12 +13,17 @@ ADMIN_USERNAME = "admin"
 SAMPLE_BRANCHES = [
     {"name": "Paris", "address": "12 Rue de Rivoli"},
     {"name": "Lyon", "address": "4 Place Bellecour"},
+    {"name": "Marseille", "address": "2 La Canebière"},
+    {"name": "Toulouse", "address": "18 Allées Jean Jaurès"},
+    {"name": "Bordeaux", "address": "30 Cours de l'Intendance"},
 ]
 # Sample stock keyed by branch name -> {product_id: quantity}.
 # Product ids are SKUs from the external Product API catalog (e.g. HB-LAP-1001).
 SAMPLE_STOCK = {
     "Paris": {"HB-LAP-1001": 10, "HB-KBD-4101": 5},
     "Lyon": {"HB-LAP-1001": 7, "HB-MON-2101": 12},
+    "Marseille": {"HB-LAP-1001": 4},
+    "Toulouse": {"HB-MON-2101": 6},
 }
 
 

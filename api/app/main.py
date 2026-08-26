@@ -64,11 +64,31 @@ def me(user: models.User = Depends(get_current_user)) -> dict:
     return {"user": serialize_user(user)}
 
 
+class BranchIn(BaseModel):
+    name: str
+    address: str | None = None
+
+
 @app.get("/api/branches")
 def list_branches(user: models.User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
     """List branches (any authenticated user)."""
     branches = db.scalars(select(models.Branch).order_by(models.Branch.name)).all()
-    return {"branches": [{"id": b.id, "name": b.name} for b in branches]}
+    return {"branches": [{"id": b.id, "name": b.name, "address": b.address} for b in branches]}
+
+
+@app.post("/api/branches", status_code=201)
+def create_branch(body: BranchIn, user: models.User = Depends(require_admin), db: Session = Depends(get_db)) -> dict:
+    """Create a branch (admin only)."""
+    name = (body.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Un nom de branche est requis")
+    if db.scalar(select(models.Branch).where(models.Branch.name.ilike(name))):
+        raise HTTPException(status_code=409, detail="Cette branche existe déjà")
+    branch = models.Branch(name=name, address=(body.address or "").strip() or None)
+    db.add(branch)
+    db.commit()
+    db.refresh(branch)
+    return {"branch": {"id": branch.id, "name": branch.name, "address": branch.address}}
 
 class StockIn(BaseModel):
     product_id: str

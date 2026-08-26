@@ -79,3 +79,34 @@ def test_admin_changes_password_and_branch(client, db, login, auth_headers):
     assert client.post(
         "/api/login", json={"username": "paris_user", "password": "pw"}
     ).status_code == 401
+
+
+def test_admin_creates_branch(client, login, auth_headers):
+    token = login("admin", "admin")
+    resp = client.post(
+        "/api/branches",
+        headers=auth_headers(token),
+        json={"name": "Nice", "address": "5 Promenade des Anglais"},
+    )
+    assert resp.status_code == 201
+    body = resp.json()["branch"]
+    assert body["name"] == "Nice"
+    assert body["address"] == "5 Promenade des Anglais"
+
+
+def test_admin_create_branch_duplicate(client, login, auth_headers):
+    token = login("admin", "admin")
+    resp = client.post("/api/branches", headers=auth_headers(token), json={"name": "Paris"})
+    assert resp.status_code == 409
+
+
+def test_admin_create_branch_empty_name(client, login, auth_headers):
+    token = login("admin", "admin")
+    resp = client.post("/api/branches", headers=auth_headers(token), json={"name": "   "})
+    assert resp.status_code == 400
+
+
+def test_common_cannot_create_branch(client, login, auth_headers):
+    token = login("paris_user")
+    resp = client.post("/api/branches", headers=auth_headers(token), json={"name": "Nice"})
+    assert resp.status_code == 403

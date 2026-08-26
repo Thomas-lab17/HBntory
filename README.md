@@ -101,8 +101,8 @@ survives restarts.
 Open http://localhost:8081 and log in with `admin` / `admin` (or the value
 of `ADMIN_PASSWORD`).
 
-- **Admin** — manage users (list, create, edit, soft-delete). Cannot touch
-  stock.
+- **Admin** — manage users (list, create, edit, soft-delete) and branches
+  (add new ones). Cannot touch stock.
 - **Common user** — manage stock of their assigned branch only. Cannot
   manage users. Create one with the admin (role is forced to `common`).
 

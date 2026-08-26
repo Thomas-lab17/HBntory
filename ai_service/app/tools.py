@@ -32,7 +32,8 @@ GET_STOCK = {
         "name": "get_stock",
         "description": (
             "Get the stock quantity of a product across branches, optionally "
-            "filtered to one branch. Real branch names are 'Paris' and 'Lyon'."
+            "filtered to one branch. Real branch names are French cities such "
+            "as 'Paris', 'Lyon', 'Marseille', 'Toulouse', 'Bordeaux'."
         ),
         "parameters": {
             "type": "object",
@@ -58,7 +59,8 @@ GET_BRANCH_STOCK = {
         "description": (
             "Get the full stock of one branch: the list of products and their "
             "quantities available in that branch, in a single call. Real branch "
-            "names are 'Paris' and 'Lyon'."
+            "names are French cities such as 'Paris', 'Lyon', 'Marseille', "
+            "'Toulouse', 'Bordeaux'."
         ),
         "parameters": {
             "type": "object",
