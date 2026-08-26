@@ -1,43 +1,113 @@
 # AI Query Service (HBntory)
 
 Independent backend that answers natural-language questions about products
-and stock using an AI agent (Groq, OpenAI-compatible chat completions)
-and tool calling.
+and stock. It uses an AI agent (Groq, OpenAI-compatible chat completions)
+with tool calling, so answers are **grounded in real data** — the agent never
+invents product names, prices, or stock quantities.
 
 ## How it works
 
-- `POST /query` `{"question": "..."}` -> `{"answer": "...", "tool_calls": [...]}`
-- Each question is independent (no conversation history), so the client uses
-  **REST** rather than WebSockets: simpler, stateless, and sufficient.
-- The agent calls tools exposed by Tom's **Product MCP server** (HTTP bridge):
-  `list_products`, `get_product`.
-- Stock is read through the Backoffice API's internal endpoint
-  `/api/stock/product/{id}` (shared `SERVICE_API_KEY`). If it is unreachable,
-  stock answers clearly state the information is unavailable.
-- The agent never invents data: tool failures are relayed to the user.
+```
+User question
+   │  POST /query {"question": "..."}
+   ▼
+┌────────────────────────────┐     tools      ┌─────────────────────────────┐
+│  agent loop (app/agent.py) │ ─────────────► │  list_products / get_product │
+│  system prompt + question  │                │  → Tom's MCP server (HTTP)   │
+│  Groq chat completions     │                └─────────────────────────────┘
+│  with tools                │     tools      ┌─────────────────────────────┐
+│                            │ ─────────────► │  get_stock                  │
+└────────────────────────────┘                │  → Backoffice API (internal)│
+   │                                          └─────────────────────────────┘
+   ▼
+{ "answer": "...", "tool_calls": ["get_stock", ...] }
+```
+
+### The agent loop (`app/agent.py`)
+
+1. Send the system prompt + user question to Groq, with the tool schemas.
+2. If the model returns **tool calls**, execute them locally and send the
+   results back as tool messages; loop.
+3. When the model returns plain text, that is the final answer.
+4. Loop is bounded (`MAX_STEPS = 6`); if the model never settles, a clear
+   fallback message is returned.
+
+Each tool call is logged to stdout as `[tool] <name>(<args>) -> <result>`,
+so you can observe exactly what the agent asked for during a question.
+
+### The tools (`app/tools.py`)
+
+| Tool | Backend | Purpose |
+|---|---|---|
+| `list_products` | Tom's MCP server (`MCP_SERVER_URL`) | Full product catalog |
+| `get_product` | Tom's MCP server | Details of one product |
+| `get_stock` | Backoffice API (`BACKOFFICE_API_URL`) | Stock quantity per branch |
+
+Product data always comes from the external Product API **through Tom's MCP
+server** — the AI service never stores product metadata. Stock comes from the
+Backoffice API's internal endpoint `/api/stock/product/{id}` (authenticated
+with the shared `SERVICE_API_KEY`).
+
+### Grounded answers
+
+The system prompt forbids inventing data: if a tool fails or has no
+information, the model must say the information is unavailable. Verified
+behaviour:
+
+- `"Which branch has stock of p1?"` → real branches and quantities.
+- `"Where can I buy zzz9?"` → clear "not found" (the MCP/API returns 404).
+- If the Backoffice API is down, stock questions answer "stock information
+  is currently unavailable".
+- If Groq is unreachable or rate-limited, the endpoint returns a clear
+  message instead of crashing (errors are caught, never a 500 stack trace).
+
+## Communication: REST, not WebSockets
+
+Each question is **independent** (no conversation history is stored or
+required by the project), so a simple `POST /query` request/response fits.
+WebSockets would only add value for streaming or live chat, which the scope
+does not need — REST keeps the client and server stateless and simple.
+
+## Supported question types
+
+- Product details: *"Tell me about product p1"*
+- Where a product is available: *"Which branch has stock of p1?"*
+- What a branch carries: *"What products can I find in Lyon?"*
+- Shopping-list recommendation: *"Can I buy 2 of p1 and 3 of p3 in one branch?"*
+
+Out-of-scope questions (weather, etc.) get a clear "I can't help with that"
+answer.
 
 ## Run
 
 ```bash
 # 1. Product MCP server (Tom's service, port 8002) — see product_mcp_server/
-
-# 2. This service
+# 2. Backoffice API (your api branch, port 5000) — see api/README.md
+# 3. This service
 cd ai_service
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 GROQ_API_KEY=gsk_... .venv/bin/uvicorn app.main:app --port 8100
 ```
 
-Env vars: `GROQ_API_KEY` (required; Groq console key),
-`GROQ_MODEL` (default `qwen/qwen3.6-27b`),
-`MCP_SERVER_URL` (default `http://localhost:8002`),
-`BACKOFFICE_API_URL` (default `http://localhost:5000`; the Backoffice API),
-`SERVICE_API_KEY` (default `dev-service-key`; must match the Backoffice API).
+Env vars:
 
-## Supported question types
+| Variable | Default | Purpose |
+|---|---|---|
+| `GROQ_API_KEY` | — (required) | Groq console key |
+| `GROQ_MODEL` | `qwen/qwen3.6-27b` | LLM model (supports tool calling) |
+| `MCP_SERVER_URL` | `http://localhost:8002` | Tom's Product MCP bridge |
+| `BACKOFFICE_API_URL` | `http://localhost:5000` | Backoffice API |
+| `SERVICE_API_KEY` | `dev-service-key` | Must match the Backoffice API |
 
-- Product details ("Tell me about product p1")
-- Where a product is available ("Which branch has stock of p1?")
-- What products a branch has ("What products are in Downtown?")
-- Which branch satisfies a shopping list ("Can I buy 2 of p1 and 3 of p2 in one branch?")
+Note: Groq blocks the default Python `urllib` User-Agent (403), so the
+client sends a custom `User-Agent` header.
 
-Out-of-scope questions get a clear "not supported" answer.
+## Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/health` | Liveness probe |
+| POST | `/query` | `{"question": "..."}` → `{"answer": "...", "tool_calls": [...]}` |
+
+CORS is open (`*`) so the public client page can call the service from any
+origin.
