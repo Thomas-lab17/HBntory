@@ -5,6 +5,9 @@ from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+import os
+
+from fastapi import Header
 
 from . import models
 from . import product_client
@@ -245,3 +248,38 @@ def get_product(product_id: str, user: models.User = Depends(get_current_user)) 
         status = 404 if result.get("error_type") == "not_found" else 502
         raise HTTPException(status_code=status, detail=result.get("message", "Product API unavailable"))
     return {"product": result["product"]}
+
+SERVICE_API_KEY = os.environ.get("SERVICE_API_KEY", "dev-service-key")
+
+
+def require_service_key(x_api_key: str | None = Header(default=None)) -> None:
+    """Guard internal endpoints for the AI service with a shared key."""
+    if x_api_key != SERVICE_API_KEY:
+        raise HTTPException(status_code=401, detail="Clé de service invalide")
+
+
+@app.get("/api/stock/product/{product_id}")
+def stock_by_product(
+    product_id: str,
+    _guard: None = Depends(require_service_key),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Read-only stock of a product across branches (internal AI endpoint)."""
+    rows = db.execute(
+        select(models.Stock, models.Branch)
+        .join(models.Branch, models.Stock.branch_id == models.Branch.id)
+        .where(models.Stock.product_id == product_id)
+        .order_by(models.Branch.name)
+    ).all()
+    stock = [{"branch": branch.name, "quantity": row.quantity} for row, branch in rows]
+    if stock:
+        return {"success": True, "product_id": product_id, "stock": stock}
+    # No local stock: distinguish "unknown product" from "known but empty".
+    product = product_client.get_product(product_id)
+    if not product.get("success"):
+        return {
+            "success": False,
+            "error_type": "not_found",
+            "message": product.get("message", "Product not found"),
+        }
+    return {"success": True, "product_id": product_id, "stock": []}
