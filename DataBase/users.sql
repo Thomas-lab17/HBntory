@@ -1,4 +1,4 @@
-CREATE TABLE users{
+CREATE TABLE users(
     
     id INTEGER NOT NULL PRIMARY KEY UNIQUE;
     username STRING NOT NULL;
@@ -8,4 +8,4 @@ CREATE TABLE users{
     is_active BOOLEAN NOT NULL;
     created_at TIMESTAMP NOT NULL;
     updated_at TIMESTAMP NOT NULL;
-};
+);

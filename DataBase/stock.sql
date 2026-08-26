@@ -1,4 +1,4 @@
-CREATE TABLE stock{
+CREATE TABLE stock(
     
     id INTEGER NOT NULL PRIMARY KEY UNIQUE;
     branch_id INTEGER NOT NULL FOREIGN KEY;
@@ -6,4 +6,4 @@ CREATE TABLE stock{
     quantity INTEGER NOT NULL;
     created_at TIMESTAMP NOT NULL;
     updated_at TIMESTAMP NOT NULL;
-};
+);
