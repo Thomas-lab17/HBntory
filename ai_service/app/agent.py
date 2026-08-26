@@ -71,22 +71,35 @@ def answer(question: str) -> dict:
         {"role": "user", "content": question},
     ]
     calls: list[str] = []
-    for _ in range(MAX_STEPS):
-        message = _chat(messages)
-        messages.append(message)
-        tool_calls = message.get("tool_calls") or []
-        if not tool_calls:
-            return {"answer": (message.get("content") or "").strip(), "tool_calls": calls}
-        for call in tool_calls:
-            name, result = _execute(call)
-            calls.append(name)
-            messages.append(
-                {
-                    "role": "tool",
-                    "content": json.dumps(result),
-                    "tool_call_id": call.get("id"),
-                }
-            )
+    try:
+        for _ in range(MAX_STEPS):
+            message = _chat(messages)
+            messages.append(message)
+            tool_calls = message.get("tool_calls") or []
+            if not tool_calls:
+                return {"answer": (message.get("content") or "").strip(), "tool_calls": calls}
+            for call in tool_calls:
+                name, result = _execute(call)
+                calls.append(name)
+                messages.append(
+                    {
+                        "role": "tool",
+                        "content": json.dumps(result),
+                        "tool_call_id": call.get("id"),
+                    }
+                )
+    except urllib.error.HTTPError as exc:
+        # Provider outage or rate limit: never crash, tell the user clearly.
+        return {
+            "answer": "Le service de réponse est temporairement indisponible "
+                      f"(erreur {exc.code}). Réessayez dans quelques instants.",
+            "tool_calls": calls,
+        }
+    except (urllib.error.URLError, OSError):
+        return {
+            "answer": "Le service de réponse est temporairement indisponible. Réessayez.",
+            "tool_calls": calls,
+        }
     return {
         "answer": "I could not complete the answer within the allowed number of steps.",
         "tool_calls": calls,

@@ -11,8 +11,9 @@ and tool calling.
   **REST** rather than WebSockets: simpler, stateless, and sufficient.
 - The agent calls tools exposed by Tom's **Product MCP server** (HTTP bridge):
   `list_products`, `get_product`.
-- Stock is read through the Backoffice API's read-only `/stock` endpoint.
-  Until that service exists, stock answers clearly state it is unavailable.
+- Stock is read through the Backoffice API's internal endpoint
+  `/api/stock/product/{id}` (shared `SERVICE_API_KEY`). If it is unreachable,
+  stock answers clearly state the information is unavailable.
 - The agent never invents data: tool failures are relayed to the user.
 
 ## Run
@@ -29,7 +30,8 @@ GROQ_API_KEY=gsk_... .venv/bin/uvicorn app.main:app --port 8100
 Env vars: `GROQ_API_KEY` (required; Groq console key),
 `GROQ_MODEL` (default `qwen/qwen3.6-27b`),
 `MCP_SERVER_URL` (default `http://localhost:8002`),
-`BACKOFFICE_API_URL` (default `http://localhost:8000`).
+`BACKOFFICE_API_URL` (default `http://localhost:5000`; the Backoffice API),
+`SERVICE_API_KEY` (default `dev-service-key`; must match the Backoffice API).
 
 ## Supported question types
 
