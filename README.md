@@ -63,8 +63,9 @@ Anonymous visitor                     Backoffice user
 Prerequisites: Docker + Docker Compose.
 
 ```bash
-# 1. Provide a DeepSeek API key
-export DEEPSEEK_API_KEY="sk-..."
+# 1. Create .env from the template and set your keys
+cp .env.example .env
+#    → DEEPSEEK_API_KEY is required (https://platform.deepseek.com/api_keys)
 
 # 2. Build and start the whole stack
 docker compose up --build
@@ -74,11 +75,17 @@ docker compose up --build
 #    Client web:  http://localhost:8080
 ```
 
-Optional environment overrides:
+`.env` is gitignored: it never enters the repository. On a fresh clone you
+MUST create it (step 1) or the `ai` service reports that the DeepSeek API key
+is missing. For running the `ai` service outside Docker, export the variables
+instead: `export DEEPSEEK_API_KEY="sk-..."`.
+
+Optional environment overrides (all read from `.env` by Docker Compose):
 
 | Variable | Default | Used by |
 |---|---|---|
 | `DEEPSEEK_API_KEY` | — (required) | `ai` |
+| `DEEPSEEK_MODEL` | `deepseek-chat` | `ai` (LLM model) |
 | `SECRET_KEY` | `change-me-in-production` | `api` (JWT signing) |
 | `SERVICE_API_KEY` | `dev-service-key` | `api` + `ai` (must match) |
 | `DATABASE_URL` | `sqlite:///./hbntory.db` | `api` (SQLite path) |
