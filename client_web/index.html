@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HBntory — Client</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <span class="brand">HBntory</span>
+      <span class="muted">Posez vos questions sur les produits et le stock</span>
+    </header>
+
+    <div class="chat">
+      <main id="messages" aria-live="polite"></main>
+
+      <form id="question-form">
+        <input
+          id="question-input"
+          name="question"
+          placeholder="entrer votre question"
+          autocomplete="off"
+          required
+        />
+        <button type="submit">Envoyer</button>
+      </form>
+      <p id="error" class="error hidden"></p>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,9 @@
+CREATE TABLE stock(
+    
+    id INTEGER NOT NULL PRIMARY KEY UNIQUE;
+    branch_id INTEGER NOT NULL FOREIGN KEY;
+    product_id INTEGER NOT NULL FOREIGN KEY;
+    quantity INTEGER NOT NULL;
+    created_at TIMESTAMP NOT NULL;
+    updated_at TIMESTAMP NOT NULL;
+);
