@@ -1,4 +1,4 @@
-# Agent loop: Groq (OpenAI-compatible chat completions) with tool calling.
+# Agent loop: DeepSeek (OpenAI-compatible chat completions) with tool calling.
 # The model may call tools; we execute them and feed results back until it
 # produces a final answer (bounded loop). No information is invented: if the
 # tools return nothing useful, the model must say the info is unavailable.
@@ -8,9 +8,9 @@ import urllib.request
 
 from . import product_client, stock_client, tools
 
-GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
-API_KEY = os.environ.get("GROQ_API_KEY", "")
-MODEL = os.environ.get("GROQ_MODEL", "qwen/qwen3.6-27b")
+DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
+API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
+MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
 MAX_STEPS = 6
 
 SYSTEM = (
@@ -25,17 +25,17 @@ SYSTEM = (
 
 
 def _chat(messages: list[dict]) -> dict:
-    """Call Groq and return the assistant message dict."""
+    """Call DeepSeek and return the assistant message dict."""
     body = json.dumps(
         {"model": MODEL, "messages": messages, "tools": tools.TOOLS, "stream": False}
     ).encode("utf-8")
     req = urllib.request.Request(
-        GROQ_URL,
+        DEEPSEEK_URL,
         data=body,
         headers={
             "Content-Type": "application/json",
             "Authorization": f"Bearer {API_KEY}",
-            # Groq blocks the default urllib User-Agent (403).
+            # Custom User-Agent for provider compatibility.
             "User-Agent": "hbntory-ai/0.1",
         },
     )
@@ -76,7 +76,7 @@ def answer(question: str) -> dict:
     if not API_KEY:
         return {
             "answer": "Le service IA n'est pas configuré : la clé API "
-                      "(GROQ_API_KEY) est manquante.",
+                      "(DEEPSEEK_API_KEY) est manquante.",
             "tool_calls": calls,
         }
     try:
@@ -101,7 +101,7 @@ def answer(question: str) -> dict:
         if exc.code in (401, 403):
             return {
                 "answer": "Le service IA n'est pas autorisé : vérifiez la clé "
-                          "API (GROQ_API_KEY).",
+                          "API (DEEPSEEK_API_KEY).",
                 "tool_calls": calls,
             }
         return {

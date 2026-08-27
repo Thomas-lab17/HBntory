@@ -26,7 +26,7 @@ Anonymous visitor                     Backoffice user
           ▼                        └──────────┬──────────┘
 ┌─────────────────────┐                       │ /api/* (JWT)
 │ ai_service  :8100   │                       ▼
-│ Groq agent + tools  │            ┌─────────────────────┐   SQLAlchemy  ┌─────────┐
+│ DeepSeek + tools    │            ┌─────────────────────┐   SQLAlchemy  ┌─────────┐
 └─────────┬───────────┘            │ api  :5000          │──────────────►│ SQLite  │
           │ MCP tools (HTTP)       │ FastAPI + SQLite    │               │ users / │
           ▼                        └─────────┬───────────┘               │branches/│
@@ -50,7 +50,7 @@ Anonymous visitor                     Backoffice user
 | `client_web` | 8080 | Public chat (anonymous questions) |
 | `backoffice-web` | 8081 | Backoffice UI (login / stock / users) |
 | `api` | 5000 | Backoffice API (FastAPI + SQLite, JWT) |
-| `ai` | 8100 | AI Query Service (Groq agent + tools) |
+| `ai` | 8100 | AI Query Service (DeepSeek agent + tools) |
 | `product-mcp` | 8002 | MCP HTTP bridge to the external Product API |
 | `external-products-api` | 5001 | External product catalog (read-only) |
 
@@ -63,8 +63,8 @@ Anonymous visitor                     Backoffice user
 Prerequisites: Docker + Docker Compose.
 
 ```bash
-# 1. Provide a Groq API key
-export GROQ_API_KEY="gsk_..."
+# 1. Provide a DeepSeek API key
+export DEEPSEEK_API_KEY="sk-..."
 
 # 2. Build and start the whole stack
 docker compose up --build
@@ -78,7 +78,7 @@ Optional environment overrides:
 
 | Variable | Default | Used by |
 |---|---|---|
-| `GROQ_API_KEY` | — (required) | `ai` |
+| `DEEPSEEK_API_KEY` | — (required) | `ai` |
 | `SECRET_KEY` | `change-me-in-production` | `api` (JWT signing) |
 | `SERVICE_API_KEY` | `dev-service-key` | `api` + `ai` (must match) |
 | `DATABASE_URL` | `sqlite:///./hbntory.db` | `api` (SQLite path) |
@@ -126,7 +126,7 @@ Each service can also be run outside Docker:
 - **external-products-api**: `cd hbntory-products-api-main && docker compose up --build`
 - **product-mcp**: `cd product_mcp_server && pip install -r requirements.txt && uvicorn app.main:app --port 8002` (set `PRODUCT_API_URL` to the catalog)
 - **api**: `cd api && python -m venv .venv && .venv/bin/pip install -r requirements.txt && .venv/bin/python -m app.init_db && .venv/bin/uvicorn app.main:app --port 5000`
-- **ai**: `cd ai_service && pip install -r requirements.txt && GROQ_API_KEY=... uvicorn app.main:app --port 8100`
+- **ai**: `cd ai_service && pip install -r requirements.txt && DEEPSEEK_API_KEY=... uvicorn app.main:app --port 8100`
 - **backoffice-web** / **client_web**: static files served by nginx (see the Compose file)
 
 ## Tests

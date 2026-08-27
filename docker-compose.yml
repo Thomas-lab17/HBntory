@@ -50,8 +50,8 @@ services:
   ai:
     build: ./ai_service
     environment:
-      GROQ_API_KEY: ${GROQ_API_KEY:-}
-      GROQ_MODEL: ${GROQ_MODEL:-qwen/qwen3.6-27b}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-qwen/qwen3.6-27b}
       MCP_SERVER_URL: http://product-mcp:8002
       BACKOFFICE_API_URL: http://api:5000
       SERVICE_API_KEY: ${SERVICE_API_KEY:-dev-service-key}

@@ -1,4 +1,4 @@
-# HBntory AI Query Service — FastAPI + Groq tool-calling agent.
+# HBntory AI Query Service — FastAPI + DeepSeek tool-calling agent.
 FROM python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
