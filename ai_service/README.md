@@ -1,7 +1,7 @@
 # AI Query Service (HBntory)
 
 Independent backend that answers natural-language questions about products
-and stock. It uses an AI agent (Groq, OpenAI-compatible chat completions)
+and stock. It uses an AI agent (DeepSeek, OpenAI-compatible chat completions)
 with tool calling, so answers are **grounded in real data** — the agent never
 invents product names, prices, or stock quantities.
 
@@ -14,7 +14,7 @@ User question
 ┌────────────────────────────┐     tools      ┌─────────────────────────────┐
 │  agent loop (app/agent.py) │ ─────────────► │  list_products / get_product │
 │  system prompt + question  │                │  → product_mcp_server (HTTP) │
-│  Groq chat completions     │                └─────────────────────────────┘
+│  DeepSeek chat completions │                └─────────────────────────────┘
 │  with tools                │     tools      ┌─────────────────────────────┐
 │                            │ ─────────────► │  get_stock                  │
 └────────────────────────────┘                │  → Backoffice API (internal)│
@@ -25,7 +25,7 @@ User question
 
 ### The agent loop (`app/agent.py`)
 
-1. Send the system prompt + user question to Groq, with the tool schemas.
+1. Send the system prompt + user question to DeepSeek, with the tool schemas.
 2. If the model returns **tool calls**, execute them locally and send the
    results back as tool messages; loop.
 3. When the model returns plain text, that is the final answer.
@@ -59,7 +59,7 @@ behaviour:
 - `"Where can I buy zzz9?"` → clear "not found" (the MCP/API returns 404).
 - If the Backoffice API is down, stock questions answer "stock information
   is currently unavailable".
-- If Groq is unreachable or rate-limited, the endpoint returns a clear
+- If DeepSeek is unreachable or rate-limited, the endpoint returns a clear
   message instead of crashing (errors are caught, never a 500 stack trace).
 
 ## Communication: REST, not WebSockets
@@ -87,21 +87,20 @@ answer.
 # 3. This service
 cd ai_service
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-GROQ_API_KEY=gsk_... .venv/bin/uvicorn app.main:app --port 8100
+DEEPSEEK_API_KEY=sk-... .venv/bin/uvicorn app.main:app --port 8100
 ```
 
 Env vars:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `GROQ_API_KEY` | — (required) | Groq console key |
-| `GROQ_MODEL` | `qwen/qwen3.6-27b` | LLM model (supports tool calling) |
+| `DEEPSEEK_API_KEY` | — (required) | DeepSeek console key |
+| `DEEPSEEK_MODEL` | `deepseek-chat` | LLM model (supports tool calling) |
 | `MCP_SERVER_URL` | `http://localhost:8002` | Product MCP bridge |
 | `BACKOFFICE_API_URL` | `http://localhost:5000` | Backoffice API |
 | `SERVICE_API_KEY` | `dev-service-key` | Must match the Backoffice API |
 
-Note: Groq blocks the default Python `urllib` User-Agent (403), so the
-client sends a custom `User-Agent` header.
+Note: The client sends a custom `User-Agent` header for provider compatibility.
 
 ## Endpoints
 

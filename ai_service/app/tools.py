@@ -1,4 +1,4 @@
-# Tool schemas exposed to the agent (OpenAI-style JSON for Groq).
+# Tool schemas exposed to the agent (OpenAI-style JSON for DeepSeek).
 LIST_PRODUCTS = {
     "type": "function",
     "function": {
